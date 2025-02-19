@@ -11,11 +11,11 @@ from functools import partial
 from torchmetrics.classification import BinaryJaccardIndex, F1Score, BinaryPrecisionRecallCurve
 
 import lightning.pytorch as pl
-from sam.segment_anything.modeling.image_encoder import ImageEncoderViT
-from sam.segment_anything.modeling.mask_decoder import MaskDecoder
-from sam.segment_anything.modeling.prompt_encoder import PromptEncoder
-from sam.segment_anything.modeling.transformer import TwoWayTransformer
-from sam.segment_anything.modeling.common import LayerNorm2d
+from segment_anything.modeling.image_encoder import ImageEncoderViT
+from segment_anything.modeling.mask_decoder import MaskDecoder
+from segment_anything.modeling.prompt_encoder import PromptEncoder
+from segment_anything.modeling.transformer import TwoWayTransformer
+from segment_anything.modeling.common import LayerNorm2d
 
 import wandb
 import pprint

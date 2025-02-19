@@ -1,4 +1,4 @@
-DATASET: 'cityscale'
+zzDATASET: 'cityscale'
 
 # IN1k + MAE only
 NO_SAM: True

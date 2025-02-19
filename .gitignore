@@ -3,3 +3,6 @@ cityscale
 *.pyc
 *.lprof
 *.png
+wandb/
+lightning_logs/
+sam_ckpts/
