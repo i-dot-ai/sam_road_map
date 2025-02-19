@@ -6,3 +6,6 @@ cityscale
 wandb/
 lightning_logs/
 sam_ckpts/
+os/data/
+os/data*/
+os/tiles/
