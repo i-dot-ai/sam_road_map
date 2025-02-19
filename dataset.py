@@ -52,6 +52,13 @@ def spacenet_data_partition():
     test_list = data_list['test']
     return train_list, val_list, test_list
 
+def os_data_partition():
+    with open('./os/data_split.json','r') as jf:
+        data_list = json.load(jf)
+    train_list = data_list['train']
+    val_list = data_list['validation']
+    test_list = data_list['test']
+    return train_list, val_list, test_list
 
 def get_patch_info_one_img(image_index, image_size, sample_margin, patch_size, patches_per_edge):
     patch_info = []
@@ -73,7 +80,9 @@ class GraphLabelGenerator():
         # full_graph: sat2graph format
         # coord_transform: lambda, [N, 2] array -> [N, 2] array
         # convert to igraph for high performance
-        self.full_graph_origin = graph_utils.igraph_from_adj_dict(full_graph, coord_transform)
+
+        self.full_graph_origin = graph_utils.igraph_from_adj_dict(full_graph, coord_transform,dataset=config.DATASET)
+        
         # find crossover points, we'll avoid predicting these as keypoints
         self.crossover_points = graph_utils.find_crossover_points(self.full_graph_origin)
         # subdivide version
@@ -307,7 +316,7 @@ class SatMapDataset(Dataset):
     def __init__(self, config, is_train, dev_run=False):
         self.config = config
         
-        assert self.config.DATASET in {'cityscale', 'spacenet'}
+        assert self.config.DATASET in {'cityscale', 'spacenet','os'}
         if self.config.DATASET == 'cityscale':
             self.IMAGE_SIZE = 2048
             # TODO: SAMPLE_MARGIN here is for training, the one in config is for inference
@@ -338,7 +347,19 @@ class SatMapDataset(Dataset):
             # coord-transform ??? -> (x, y)
             # takes [N, 2] points
             coord_transform = lambda v : np.stack([v[:, 1], 400 - v[:, 0]], axis=1)
+        
+        elif self.config.DATASET == 'os':
+            self.IMAGE_SIZE = 256
+            self.SAMPLE_MARGIN = 0
 
+            rgb_pattern = './os/data/{}.png'
+            keypoint_mask_pattern = './os/data/{}_keypoints.png'
+            road_mask_pattern = './os/data/{}_road_mask.png'
+            gt_graph_pattern = './os/data/{}_graph.json'
+            coord_transform = None
+            
+            train, val, test = os_data_partition()
+            
         self.is_train = is_train
 
         train_split = train + val
@@ -362,14 +383,17 @@ class SatMapDataset(Dataset):
             rgb_path = rgb_pattern.format(tile_idx)
             road_mask_path = road_mask_pattern.format(tile_idx)
             keypoint_mask_path = keypoint_mask_pattern.format(tile_idx)
+            with open(gt_graph_pattern.format(tile_idx),'r') as jf:
+                gt_graph_adj = json.load(jf)
 
-            # graph label gen
-            # gt graph: dict for adj list, for cityscale set keys are (r, c) nodes, values are list of (r, c) nodes
-            # I don't know what coord system spacenet uses but we convert them all to (x, y)
-            gt_graph_adj = pickle.load(open(gt_graph_pattern.format(tile_idx),'rb'))
-            if len(gt_graph_adj) == 0:
-                print(f'===== skipped empty tile {tile_idx} =====')
-                continue
+            if self.config.DATASET != 'os':
+                # graph label gen
+                # gt graph: dict for adj list, for cityscale set keys are (r, c) nodes, values are list of (r, c) nodes
+                # I don't know what coord system spacenet uses but we convert them all to (x, y)
+                gt_graph_adj = pickle.load(open(gt_graph_pattern.format(tile_idx),'rb'))
+                if len(gt_graph_adj) == 0:
+                    print(f'===== skipped empty tile {tile_idx} =====')
+                    continue
 
             self.rgbs.append(read_rgb_img(rgb_path))
             self.road_masks.append(cv2.imread(road_mask_path, cv2.IMREAD_GRAYSCALE))
@@ -396,6 +420,8 @@ class SatMapDataset(Dataset):
                 return max(1, int(self.IMAGE_SIZE / self.config.PATCH_SIZE)) ** 2 * 2500
             elif self.config.DATASET == 'spacenet':
                 return 84667
+            elif self.config.DATASET == 'os':
+                return len(self.rgbs)
         else:
             return len(self.eval_patches)
 
@@ -435,8 +461,8 @@ class SatMapDataset(Dataset):
         # masks: [H, W] 0-1
         return {
             'rgb': torch.tensor(rgb_patch, dtype=torch.float32),
-            'keypoint_mask': torch.tensor(keypoint_mask_patch, dtype=torch.float32) / 255.0,
-            'road_mask': torch.tensor(road_mask_patch, dtype=torch.float32) / 255.0,
+            'keypoint_mask': torch.round(torch.tensor(keypoint_mask_patch, dtype=torch.float32) / 255.0),
+            'road_mask': torch.round(torch.tensor(road_mask_patch, dtype=torch.float32) / 255.0),
             
             'graph_points': torch.tensor(graph_points, dtype=torch.float32),
             'pairs': torch.tensor(pairs, dtype=torch.int32),

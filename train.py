@@ -19,7 +19,7 @@ from lightning.pytorch.callbacks import LearningRateMonitor
 parser = ArgumentParser()
 parser.add_argument(
     "--config",
-    default=None,
+    default='config/toponet_vitb_256_os.yaml',
     help="config file (.yml) containing the hyper-parameters for training. "
     "If None, use the nnU-Net config. See /config for examples.",
 )

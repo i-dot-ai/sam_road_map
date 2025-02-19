@@ -9,7 +9,7 @@ from shapely.geometry import Point, LineString
 from shapely.strtree import STRtree
 from collections import deque
 import unittest
-
+import json
 import igraph as ig
 import rtree
 import scipy
@@ -439,30 +439,64 @@ def convert_from_nx(graph):
     # Returns:
     # nodes: [N_node, 2] of the (row, col) image coordinates.
     # edges: [N_edge, 2] pairs of (start, end) node indices.
+    graph=load_nx_from_json(graph)
     node_to_idx = dict()
     nodes = list()
     edges = list()
-    for node in graph.nodes():
+    for node in graph.nodes:
         if node not in node_to_idx.keys():
             node_to_idx[node] = len(node_to_idx)
-        x, y = node
+        x, y = map(int, graph.nodes[node]['pixel_coords'])
         nodes.append((y, x))  # to rc
     for node_0, node_1 in graph.edges():
         edges.append((node_to_idx[node_0], node_to_idx[node_1]))
     
     return np.array(nodes), np.array(edges)
 
+def load_nx_from_json(graph_json: dict) -> nx.Graph:
+    """
+    Load a JSON graph file into a NetworkX graph.
+    
+    Args:
+        filepath: Path to the JSON graph file
+        
+    Returns:
+        NetworkX graph with nodes and their attributes
+    """
+    
+    G = nx.Graph()
+    
+    for node_id, node_data in graph_json['nodes'].items():
+        G.add_node(node_id, 
+                  pixel_coords=node_data['pixel_coords'],
+                  geo_coords=node_data['geo_coords'])
+    
+    for edge in graph_json['edges']:
+        try:
+            G.add_edge(edge[0], edge[1])
+        except:
+            G.add_edge(edge['source'], edge['target'])
+
+    
+    return G
+
 
 ### igraph utils for performance
 
-def igraph_from_adj_dict(graph, coord_transform):
+def igraph_from_adj_dict(graph, coord_transform,dataset=None):
     # Edges will be de-duped
-    nodes, edges = convert_from_sat2graph_format(graph)
+    if dataset == 'os':
+        nodes,edges=convert_from_nx(graph)
+    else:
+        nodes, edges = convert_from_sat2graph_format(graph)
     n_vertices = nodes.shape[0]
     if n_vertices == 0:
         nodes = np.zeros((0, 2), dtype=nodes.dtype)
     edges = set([(min(src, tgt), max(src, tgt)) for src, tgt in edges])
     g = ig.Graph(n_vertices, list(edges))
+    if dataset == 'os':
+        g.vs['point'] = nodes
+        return g
     try:
         g.vs['point'] = coord_transform(nodes)  # to xy
     except Exception:
