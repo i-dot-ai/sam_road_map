@@ -3,10 +3,12 @@ import os
 import imageio
 import torch
 import cv2
+import json
 
 from utils import load_config, create_output_dir_and_save_config
 from dataset import cityscale_data_partition, read_rgb_img, get_patch_info_one_img
 from dataset import spacenet_data_partition
+from dataset import os_data_partition
 from model import SAMRoad
 import graph_extraction
 import graph_utils
@@ -261,6 +263,11 @@ if __name__ == "__main__":
         _, _, test_img_indices = spacenet_data_partition()
         rgb_pattern = './spacenet/RGB_1.0_meter/{}__rgb.png'
         gt_graph_pattern = './spacenet/RGB_1.0_meter/{}__gt_graph.p'
+    elif config.DATASET == 'os':
+        _, _, test_img_indices = os_data_partition()
+        rgb_pattern = './os/data/{}.png'
+        gt_graph_pattern = './os/data/{}_graph.json'
+    
     
     output_dir_prefix = './save/infer_'
     if args.output_dir:
@@ -281,8 +288,12 @@ if __name__ == "__main__":
         total_inference_seconds += (end_seconds - start_seconds)
 
         gt_graph_path = gt_graph_pattern.format(img_id)
-        gt_graph = pickle.load(open(gt_graph_path, "rb"))
-        gt_nodes, gt_edges = graph_utils.convert_from_sat2graph_format(gt_graph)
+        if config.DATASET != 'os':
+            gt_graph = pickle.load(open(gt_graph_path, "rb"))
+            gt_nodes, gt_edges = graph_utils.convert_from_sat2graph_format(gt_graph)
+        else:
+            gt_graph = json.load(open(gt_graph_path, "rb"))
+            gt_nodes, gt_edges = graph_utils.convert_from_nx(gt_graph)
         if len(gt_nodes) == 0:
             gt_nodes = np.zeros([0, 2], dtype=np.float32)
 

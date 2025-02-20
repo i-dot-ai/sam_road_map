@@ -2,9 +2,9 @@ DATASET: 'os'
 
 # IN1k + MAE only
 NO_SAM: False
-
+#
 SAM_VERSION: 'vit_b'
-SAM_CKPT_PATH: 'sam_ckpts/sam_vit_b_01ec64.pth'
+SAM_CKPT_PATH: 'lightning_logs/0lpr9u50/checkpoints/epoch=29-step=120.ckpt'
 PATCH_SIZE: 256
 BATCH_SIZE: 64
 DATA_WORKER_NUM: 1

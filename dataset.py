@@ -383,9 +383,7 @@ class SatMapDataset(Dataset):
             rgb_path = rgb_pattern.format(tile_idx)
             road_mask_path = road_mask_pattern.format(tile_idx)
             keypoint_mask_path = keypoint_mask_pattern.format(tile_idx)
-            with open(gt_graph_pattern.format(tile_idx),'r') as jf:
-                gt_graph_adj = json.load(jf)
-
+            
             if self.config.DATASET != 'os':
                 # graph label gen
                 # gt graph: dict for adj list, for cityscale set keys are (r, c) nodes, values are list of (r, c) nodes
@@ -394,7 +392,10 @@ class SatMapDataset(Dataset):
                 if len(gt_graph_adj) == 0:
                     print(f'===== skipped empty tile {tile_idx} =====')
                     continue
-
+            else:
+                with open(gt_graph_pattern.format(tile_idx),'r') as jf:
+                    gt_graph_adj = json.load(jf)
+                    
             self.rgbs.append(read_rgb_img(rgb_path))
             self.road_masks.append(cv2.imread(road_mask_path, cv2.IMREAD_GRAYSCALE))
             self.keypoint_masks.append(cv2.imread(keypoint_mask_path, cv2.IMREAD_GRAYSCALE))

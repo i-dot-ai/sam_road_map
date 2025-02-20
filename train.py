@@ -19,7 +19,7 @@ from lightning.pytorch.callbacks import LearningRateMonitor
 parser = ArgumentParser()
 parser.add_argument(
     "--config",
-    default='config/toponet_vitb_256_os.yaml',
+    default='config/toponet_vitb_256_spacenet.yaml',
     help="config file (.yml) containing the hyper-parameters for training. "
     "If None, use the nnU-Net config. See /config for examples.",
 )
@@ -50,7 +50,8 @@ if __name__ == "__main__":
         # track hyperparameters and run metadata
         config=config,
         # disable wandb if debugging
-        mode='disabled' if dev_run else None
+        mode='disabled' if dev_run else None,
+        name='spacenet_longrun'
     )
 
 
