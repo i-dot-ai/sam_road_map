@@ -1,4 +1,4 @@
-DATASET: 'os'
+DATASET: 'spacenet'
 
 # IN1k + MAE only
 NO_SAM: False

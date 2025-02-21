@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+import datetime
 
 from utils import load_config
 from dataset import SatMapDataset, graph_collate_fn
@@ -19,7 +20,7 @@ from lightning.pytorch.callbacks import LearningRateMonitor
 parser = ArgumentParser()
 parser.add_argument(
     "--config",
-    default='config/toponet_vitb_256_spacenet.yaml',
+    default='config/toponet_vitb_256_os.yaml',
     help="config file (.yml) containing the hyper-parameters for training. "
     "If None, use the nnU-Net config. See /config for examples.",
 )
@@ -51,7 +52,7 @@ if __name__ == "__main__":
         config=config,
         # disable wandb if debugging
         mode='disabled' if dev_run else None,
-        name='spacenet_longrun'
+        name=f'{config.DATASET}_{datetime.datetime.now().strftime("%d_%H%M")}'
     )
 
 
@@ -82,7 +83,7 @@ if __name__ == "__main__":
         collate_fn=graph_collate_fn,
     )
 
-    checkpoint_callback = ModelCheckpoint(every_n_epochs=1, save_top_k=-1)
+    checkpoint_callback = ModelCheckpoint(every_n_epochs=2, save_top_k=-1)
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
     wandb_logger = WandbLogger()

@@ -25,10 +25,10 @@ from argparse import ArgumentParser
 
 parser = ArgumentParser()
 parser.add_argument(
-    "--checkpoint", default=None, help="checkpoint of the model to test."
+    "--checkpoint", default='lightning_logs/qxauzw5e/checkpoints/epoch=29-step=1560.ckpt', help="checkpoint of the model to test."
 )
 parser.add_argument(
-    "--config", default=None, help="model config."
+    "--config", default='config/toponet_vitb_256_os.yaml', help="model config."
 )
 parser.add_argument(
     "--output_dir", default=None, help="Name of the output dir, if not specified will use timestamp"
@@ -240,7 +240,7 @@ def infer_one_img(net, img, config):
 
 if __name__ == "__main__":
     config = load_config(args.config)
-    
+    config.checkpoint=args.checkpoint
     # Builds eval model    
     device = torch.device("cuda") if args.device == "cuda" else torch.device("cpu")
     # Good when model architecture/input shape are fixed.
@@ -343,13 +343,13 @@ if __name__ == "__main__":
         if config.DATASET == 'spacenet':
             # r, c -> ???
             pred_nodes = np.stack([400 - pred_nodes[:, 0], pred_nodes[:, 1]], axis=1)
-        large_map_sat2graph_format = graph_utils.convert_to_sat2graph_format(pred_nodes, pred_edges)
+        #large_map_sat2graph_format = graph_utils.convert_to_sat2graph_format(pred_nodes, pred_edges)
+        
+        nx_graph=graph_utils.convert_to_nx(pred_nodes, pred_edges)
         graph_save_dir = os.path.join(output_dir, 'graph')
-        if not os.path.exists(graph_save_dir):
-            os.makedirs(graph_save_dir)
-        graph_save_path = os.path.join(graph_save_dir, f'{img_id}.p')
-        with open(graph_save_path, 'wb') as file:
-            pickle.dump(large_map_sat2graph_format, file)
+        os.makedirs(graph_save_dir, exist_ok=True)
+        graph_save_path = os.path.join(graph_save_dir, f'{img_id}.json')
+        graph_utils.save_nx_to_json(nx_graph, graph_save_path)
         
         print(f'Done for {img_id}.')
     
