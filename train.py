@@ -43,7 +43,8 @@ if __name__ == "__main__":
     config = load_config(args.config)
     dev_run = args.dev_run or args.fast_dev_run
 
-    
+    name = f'{config.DATASET}_{datetime.datetime.now().strftime("%d_%H%M")}_sparse_low_threshold_mixed'
+    log_dir = f'wandb/{name}'
     # start a new wandb run to track this script
     wandb.init(
         # set the wandb project where this run will be logged
@@ -52,7 +53,8 @@ if __name__ == "__main__":
         config=config,
         # disable wandb if debugging
         mode='disabled' if dev_run else None,
-        name=f'{config.DATASET}_{datetime.datetime.now().strftime("%d_%H%M")}'
+        name=name,
+        dir=log_dir
     )
 
 
@@ -100,6 +102,7 @@ if __name__ == "__main__":
         fast_dev_run=args.fast_dev_run,
         # strategy='ddp_find_unused_parameters_true',
         precision=args.precision,
+        default_root_dir=log_dir,
         # profiler=profiler
         )
 
