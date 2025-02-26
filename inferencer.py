@@ -25,7 +25,7 @@ from argparse import ArgumentParser
 
 parser = ArgumentParser()
 parser.add_argument(
-    "--checkpoint", default='lightning_logs/qxauzw5e/checkpoints/epoch=29-step=1560.ckpt', help="checkpoint of the model to test."
+    "--checkpoint", default='lightning_logs/London_sparse_lond/checkpoints/epoch=49-step=5950.ckpt', help="checkpoint of the model to test."
 )
 parser.add_argument(
     "--config", default='config/toponet_vitb_256_os.yaml', help="model config."

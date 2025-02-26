@@ -43,7 +43,7 @@ if __name__ == "__main__":
     config = load_config(args.config)
     dev_run = args.dev_run or args.fast_dev_run
 
-    name = f'{config.DATASET}_{datetime.datetime.now().strftime("%d_%H%M")}_sparse_low_threshold_mixed'
+    name = f'{config.DATASET}_{datetime.datetime.now().strftime("%d_%H%M")}_london_sparse_low_threshold_mixed_vith_long_highLRratio'
     log_dir = f'wandb/{name}'
     # start a new wandb run to track this script
     wandb.init(
@@ -85,7 +85,7 @@ if __name__ == "__main__":
         collate_fn=graph_collate_fn,
     )
 
-    checkpoint_callback = ModelCheckpoint(every_n_epochs=2, save_top_k=-1)
+    checkpoint_callback = ModelCheckpoint(every_n_epochs=5, save_top_k=-1,dirpath='/opt/dlami/nvme/sam_road/checkpoints')
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
     wandb_logger = WandbLogger()
