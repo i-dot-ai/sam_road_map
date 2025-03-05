@@ -7,7 +7,10 @@ cityscale
 wandb/
 lightning_logs/
 sam_ckpts/
-os/data/
-os/data*/
+# Ignore everything in os directory
+os/*
+# But not these files
+!os/data_split.json
+!os/generate_train_test_split.py
 os/tiles/
 save/
