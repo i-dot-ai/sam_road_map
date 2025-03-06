@@ -1,3 +1,5 @@
+google_creds.json
+.env
 spacenet
 cityscale
 *.pyc

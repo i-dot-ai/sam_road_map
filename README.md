@@ -1,9 +1,5 @@
-# Official codebase for "Segment Anything Model for Road Network Graph Extraction", CVPRW 2024
-https://arxiv.org/pdf/2403.16051.pdf
-
-[The paper](https://openaccess.thecvf.com/content/CVPR2024W/SG2RL/papers/Hetang_Segment_Anything_Model_for_Road_Network_Graph_Extraction_CVPRW_2024_paper.pdf) has been accepted by IEEE/CVF Computer Vision and Pattern Recognition Conference (CVPR) 2024, 2nd Workshop on Scene Graphs and Graph Representation Learning.
-
-[Received the best paper award of the workshop](https://sites.google.com/corp/view/sg2rl/). Big thanks to the organizers for the recognition!!
+# Fork of "Segment Anything Model for Road Network Graph Extraction"
+Link to google creds https://drive.google.com/file/d/1e6AJ6tSdS1dVmAF4KuOcWVLpn5_opASH/view?usp=drive_link
 
 ## Demos
 Predicted road network graph in a large region (2km x 2km).
@@ -78,35 +74,5 @@ python inferencer.py --config=config/toponet_vitb_256_spacenet.yaml --checkpoint
 ### Test
 Go to cityscale_metrics or spacenet_metrics, and run  
 bash eval_schedule.bash  
-
-Check that script for details. It runs both APLS and TOPO and stores scores to your output dir.
-
-## Our Checkpoints
-[congrui/sam_road](https://huggingface.co/congrui/sam_road)
-
-## Citation
-```
-@article{hetang2024segment,
-  title={Segment Anything Model for Road Network Graph Extraction},
-  author={Hetang, Congrui and Xue, Haoru and Le, Cindy and Yue, Tianwei and Wang, Wenping and He, Yihui},
-  journal={arXiv preprint arXiv:2403.16051},
-  year={2024}
-}
-```
-
-## Acknowledgement
-We sincerely appreciate the authors of the following codebases which made this project possible:
-- Segment Anything Model  
-- RNGDet++  
-- SAMed  
-- Detectron2  
-
-## TODO List
-- [x] Basic instructions
-- [x] Organize configs
-- [x] Add dependency list
-- [x] Add demos
-- [x] Add trained checkpoints
-
 
 
