@@ -59,8 +59,8 @@ if __name__ == "__main__":
     dev_run = args.dev_run or args.fast_dev_run
 
     # Create output directory and save config
-    custom_tags = 'low_threshold_mixed_vitb_long_highLRratio'
-    name = f'{config.DATA_CONFIG.dataset_id}_{custom_tags}_{datetime.datetime.now().strftime("%d_%H%M")}'
+    custom_tags = 'new_dataset'
+    name = f'{config.DATASET_ID}_{custom_tags}_{datetime.datetime.now().strftime("%d_%H%M")}'
     
     # Create shared directory for checkpoints, wandb logs, and config files
     output_dir_prefix = 'output/'

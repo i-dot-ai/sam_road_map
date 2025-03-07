@@ -11,12 +11,24 @@ def load_config(path):
     with open(path) as file:
         config_dict = yaml.safe_load(file)
         
-    if config_dict['DATASET'] == 'os':
-        data_config_path = os.path.join("os", "data", "config.json")
-        with open(data_config_path) as file:
-            data_config_dict = yaml.safe_load(file)
-        config_dict['DATA_CONFIG'] = data_config_dict
     return Dict(config_dict)
+
+def load_data_config(path, config):
+    # The path should now point to the dataset directory
+    index_path = os.path.join(path, 'index.json')
+    
+    with open(index_path) as file:
+        index_data = yaml.safe_load(file)
+        
+    # Extract configuration from the metadata field
+    if 'metadata' in index_data:
+        data_config_dict = index_data['metadata']
+    else:
+        # Fallback to original behavior if metadata not found
+        with open(path) as file:
+            data_config_dict = yaml.safe_load(file)
+            
+    return Dict(data_config_dict)
 
 def create_output_dir_and_save_config(output_dir_prefix, config, specified_dir=None):
     if specified_dir:

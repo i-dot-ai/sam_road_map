@@ -10,6 +10,9 @@ import pickle
 import os
 import addict
 import json
+from utils import load_data_config
+# Import DatasetHandler for GCP download functionality
+from extract.src.extractors.georeferencers.utils.get_datsets import DatasetHandler
 
 
 
@@ -351,15 +354,39 @@ class SatMapDataset(Dataset):
         elif self.config.DATASET == 'os':
             self.IMAGE_SIZE = 256
             self.SAMPLE_MARGIN = 0
-
-            rgb_pattern = './os/data/{}.png'
-            keypoint_mask_pattern = './os/data/{}_keypoints.png'
-            road_mask_pattern = './os/data/{}_road_mask.png'
-            gt_graph_pattern = './os/data/{}_graph.json'
+            
+            # Get dataset_id from config or use default
+            dataset_id = getattr(self.config, 'DATASET_ID', 'default')
+            dataset_dir = f'./os/{dataset_id}'
+            
+            # Initialize DatasetHandler with the datasset directory and enable GCP download
+            dataset_handler = DatasetHandler(dataset_dir, download_from_gcs=True)
+            data_config = load_data_config(dataset_dir, self.config)
+            self.config.DATA_CONFIG = data_config
+            
+            # Ensure dataset exists locally, DatasetHandler will download from GCP if needed
+            if not os.path.exists(dataset_dir) or len(dataset_handler.get_all_tile_ids()) == 0:
+                print(f"Dataset {dataset_id} not found locally, attempting to download from GCP...")
+                # DatasetHandler automatically attempts download in its initialization
+                if not os.path.exists(dataset_dir) or len(dataset_handler.get_all_tile_ids()) == 0:
+                    raise ValueError(f"Failed to download dataset {dataset_id} from GCP")
+                print(f"Successfully downloaded dataset {dataset_id} from GCP")
+            
+            # Set patterns for file paths based on the dataset structure from DatasetHandler
+            rgb_pattern = f'{dataset_dir}/{{}}/raster.png'
+            keypoint_mask_pattern = f'{dataset_dir}/{{}}/keypoints.png'
+            road_mask_pattern = f'{dataset_dir}/{{}}/road_mask.png'
+            gt_graph_pattern = f'{dataset_dir}/{{}}/graph.json'
             coord_transform = None
             
-            train, val, test = os_data_partition()
-            
+            # Get data split or generate one if it doesn't exist
+            data_split = dataset_handler.get_data_split()
+            if data_split is None:
+                print(f"Creating new data split for dataset {dataset_id}")
+                data_split = dataset_handler.generate_data_split()
+                
+            train, val, test = data_split['train'], data_split['validation'], data_split['test']
+        
         self.is_train = is_train
 
         train_split = train + val
@@ -393,15 +420,25 @@ class SatMapDataset(Dataset):
                     print(f'===== skipped empty tile {tile_idx} =====')
                     continue
             else:
-                with open(gt_graph_pattern.format(tile_idx),'r') as jf:
-                    gt_graph_adj = json.load(jf)
+                try:
+                    with open(gt_graph_pattern.format(tile_idx),'r') as jf:
+                        gt_graph_adj = json.load(jf)
+                except FileNotFoundError:
+                    print(f'===== skipped missing tile {tile_idx} =====')
+                    continue
+                except json.JSONDecodeError:
+                    print(f'===== skipped corrupt graph file for tile {tile_idx} =====')
+                    continue
                     
-            self.rgbs.append(read_rgb_img(rgb_path))
-            self.road_masks.append(cv2.imread(road_mask_path, cv2.IMREAD_GRAYSCALE))
-            self.keypoint_masks.append(cv2.imread(keypoint_mask_path, cv2.IMREAD_GRAYSCALE))
-            graph_label_generator = GraphLabelGenerator(config, gt_graph_adj, coord_transform)
-            self.graph_label_generators.append(graph_label_generator)
-            
+            try:
+                self.rgbs.append(read_rgb_img(rgb_path))
+                self.road_masks.append(cv2.imread(road_mask_path, cv2.IMREAD_GRAYSCALE))
+                self.keypoint_masks.append(cv2.imread(keypoint_mask_path, cv2.IMREAD_GRAYSCALE))
+                graph_label_generator = GraphLabelGenerator(config, gt_graph_adj, coord_transform)
+                self.graph_label_generators.append(graph_label_generator)
+            except Exception as e:
+                print(f'===== error loading tile {tile_idx}: {str(e)} =====')
+                continue
         
         self.sample_min = self.SAMPLE_MARGIN
         self.sample_max = self.IMAGE_SIZE - (self.config.PATCH_SIZE + self.SAMPLE_MARGIN)
@@ -413,6 +450,7 @@ class SatMapDataset(Dataset):
                 self.eval_patches += get_patch_info_one_img(
                     i, self.IMAGE_SIZE, self.SAMPLE_MARGIN, self.config.PATCH_SIZE, eval_patches_per_edge
                 )
+        
 
     def __len__(self):
         if self.is_train:
