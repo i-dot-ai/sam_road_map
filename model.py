@@ -634,14 +634,46 @@ class SAMRoad(pl.LightningModule):
 
         topo_gt, topo_loss_mask = batch['connected'].to(torch.int32), valid.to(torch.float32)
 
+        # Update PR curve metrics (already present)
         self.keypoint_pr_curve.update(mask_scores[..., 0], keypoint_mask.to(torch.int32))
         self.road_pr_curve.update(mask_scores[..., 1], road_mask.to(torch.int32))
         
+        # Also update IoU metrics
+        self.keypoint_iou.update(mask_scores[..., 0], keypoint_mask)
+        self.road_iou.update(mask_scores[..., 1], road_mask)
+        
+        # Update SSIM metrics (formatting as in validation_step)
+        pred_keypoint = mask_scores[..., 0].unsqueeze(1)  # [B, 1, H, W]
+        gt_keypoint = keypoint_mask.unsqueeze(1)  # [B, 1, H, W]
+        pred_road = mask_scores[..., 1].unsqueeze(1)  # [B, 1, H, W]
+        gt_road = road_mask.unsqueeze(1)  # [B, 1, H, W]
+        
+        self.keypoint_ssim.update(pred_keypoint, gt_keypoint)
+        self.road_ssim.update(pred_road, gt_road)
+        
+        # Update topo metrics (already present)
         valid = valid.to(torch.int32)
         topo_gt = (1 - valid) * -1 + valid * topo_gt
         self.topo_pr_curve.update(topo_scores, topo_gt.unsqueeze(-1).to(torch.int32))
+        # Also update F1 score
+        self.topo_f1.update(topo_scores, topo_gt.unsqueeze(-1))
 
     def on_test_end(self):
+        # Calculate standard metrics first
+        keypoint_iou = self.keypoint_iou.compute()
+        road_iou = self.road_iou.compute()
+        topo_f1 = self.topo_f1.compute()
+        keypoint_ssim = self.keypoint_ssim.compute()
+        road_ssim = self.road_ssim.compute()
+        
+        # Log these metrics
+        self.log("test_keypoint_iou", keypoint_iou)
+        self.log("test_road_iou", road_iou)
+        self.log("test_topo_f1", topo_f1)
+        self.log("test_keypoint_ssim", keypoint_ssim)
+        self.log("test_road_ssim", road_ssim)
+        
+        # Find best thresholds (existing functionality)
         def find_best_threshold(pr_curve_metric, category):
             print(f'======= {category} ======')   
             precision, recall, thresholds = pr_curve_metric.compute()
@@ -657,7 +689,13 @@ class SAMRoad(pl.LightningModule):
         find_best_threshold(self.keypoint_pr_curve, 'keypoint')
         find_best_threshold(self.road_pr_curve, 'road')
         find_best_threshold(self.topo_pr_curve, 'topo')
-
+        
+        # Reset all metrics
+        self.keypoint_iou.reset()
+        self.road_iou.reset()
+        self.topo_f1.reset()
+        self.keypoint_ssim.reset()
+        self.road_ssim.reset()
 
     def configure_optimizers(self):
         param_dicts = []
