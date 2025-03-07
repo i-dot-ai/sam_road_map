@@ -4,3 +4,7 @@
 [submodule "sam"]
 	path = sam
 	url = git@github.com:htcr/segment-anything-road.git
+[submodule "extract"]
+	path = extract
+	url = https://github.com/i-dot-ai/planning-extract
+	branch = dev-georeference
