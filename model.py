@@ -9,9 +9,11 @@ import copy
 
 from functools import partial
 from torchmetrics.classification import BinaryJaccardIndex, F1Score, BinaryPrecisionRecallCurve
+from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 import lightning.pytorch as pl
 from segment_anything.modeling.image_encoder import ImageEncoderViT
+
 from segment_anything.modeling.mask_decoder import MaskDecoder
 from segment_anything.modeling.prompt_encoder import PromptEncoder
 from segment_anything.modeling.transformer import TwoWayTransformer
@@ -357,6 +359,9 @@ class SAMRoad(pl.LightningModule):
         self.keypoint_iou = BinaryJaccardIndex(threshold=0.5)
         self.road_iou = BinaryJaccardIndex(threshold=0.5)
         self.topo_f1 = F1Score(task='binary', threshold=0.5, ignore_index=-1)
+        # SSIM metrics to measure structural similarity between predictions and ground truth
+        self.keypoint_ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
+        self.road_ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
         # testing only, not used in training
         self.keypoint_pr_curve = BinaryPrecisionRecallCurve(ignore_index=-1)
         self.road_pr_curve = BinaryPrecisionRecallCurve(ignore_index=-1)
@@ -582,6 +587,16 @@ class SAMRoad(pl.LightningModule):
         self.keypoint_iou.update(mask_scores[..., 0], keypoint_mask)
         self.road_iou.update(mask_scores[..., 1], road_mask)
         
+        # Update SSIM metrics for keypoints and roads
+        # Need to ensure proper dimensions for SSIM (expects [B, C, H, W])
+        pred_keypoint = mask_scores[..., 0].unsqueeze(1)  # [B, 1, H, W]
+        gt_keypoint = keypoint_mask.unsqueeze(1)  # [B, 1, H, W]
+        pred_road = mask_scores[..., 1].unsqueeze(1)  # [B, 1, H, W]
+        gt_road = road_mask.unsqueeze(1)  # [B, 1, H, W]
+        
+        self.keypoint_ssim.update(pred_keypoint, gt_keypoint)
+        self.road_ssim.update(pred_road, gt_road)
+        
         valid = valid.to(torch.int32)
         topo_gt = (1 - valid) * -1 + valid * topo_gt
         self.topo_f1.update(topo_scores, topo_gt.unsqueeze(-1))
@@ -591,12 +606,23 @@ class SAMRoad(pl.LightningModule):
         keypoint_iou = self.keypoint_iou.compute()
         road_iou = self.road_iou.compute()
         topo_f1 = self.topo_f1.compute()
+        # Compute SSIM values
+        keypoint_ssim = self.keypoint_ssim.compute()
+        road_ssim = self.road_ssim.compute()
+        
         self.log("keypoint_iou", keypoint_iou)
         self.log("road_iou", road_iou)
         self.log("topo_f1", topo_f1)
+        # Log SSIM values
+        self.log("keypoint_ssim", keypoint_ssim)
+        self.log("road_ssim", road_ssim)
+        
         self.keypoint_iou.reset()
         self.road_iou.reset()
         self.topo_f1.reset()
+        # Reset SSIM metrics
+        self.keypoint_ssim.reset()
+        self.road_ssim.reset()
 
     def test_step(self, batch, batch_idx):
         # masks: [B, H, W]
