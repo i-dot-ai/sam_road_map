@@ -21,40 +21,6 @@ def read_rgb_img(path):
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     return rgb
 
-def cityscale_data_partition():
-    # dataset partition
-    indrange_train = []
-    indrange_test = []
-    indrange_validation = []
-
-    for x in range(180):
-        if x % 10 < 8 :
-            indrange_train.append(x)
-
-        if x % 10 == 9:
-            indrange_test.append(x)
-
-        if x % 20 == 18:
-            indrange_validation.append(x)
-
-        if x % 20 == 8:
-            indrange_test.append(x)
-    return indrange_train, indrange_validation, indrange_test
-
-
-def spacenet_data_partition():
-    # dataset partition
-    with open('./spacenet/data_split.json','r') as jf:
-        data_list = json.load(jf)
-        # data_list = data_list['test'] + data_list['validation'] + data_list['train']
-    # train_list = [tile_index for _, tile_index in data_list['train']]
-    # val_list = [tile_index for _, tile_index in data_list['validation']]
-    # test_list = [tile_index for _, tile_index in data_list['test']]
-    train_list = data_list['train']
-    val_list = data_list['validation']
-    test_list = data_list['test']
-    return train_list, val_list, test_list
-
 def os_data_partition():
     with open('./os/data_split.json','r') as jf:
         data_list = json.load(jf)
@@ -247,19 +213,6 @@ def test_graph_label_generator():
     if not os.path.exists('debug'):
         os.mkdir('debug')
 
-    dataset = 'spacenet'
-    if dataset == 'cityscale':
-        rgb_path = './cityscale/20cities/region_166_sat.png'
-        # Load GT Graph
-        gt_graph = pickle.load(open(f"./cityscale/20cities/region_166_refine_gt_graph.p",'rb'))
-        coord_transform = lambda v : v[:, ::-1]
-    elif dataset == 'spacenet':
-        rgb_path = 'spacenet/RGB_1.0_meter/AOI_2_Vegas_210__rgb.png'
-        # Load GT Graph
-        gt_graph = pickle.load(open(f"spacenet/RGB_1.0_meter/AOI_2_Vegas_210__gt_graph.p",'rb'))
-        # gt_graph = pickle.load(open(f"spacenet/RGB_1.0_meter/AOI_4_Shanghai_1061__gt_graph_dense_spacenet.p",'rb'))
-        
-        coord_transform = lambda v : np.stack([v[:, 1], 400 - v[:, 0]], axis=1)
         # coord_transform = lambda v : v[:, ::-1]
     rgb = read_rgb_img(rgb_path)
     config = addict.Dict()
@@ -319,73 +272,43 @@ class SatMapDataset(Dataset):
     def __init__(self, config, is_train, dev_run=False):
         self.config = config
         
-        assert self.config.DATASET in {'cityscale', 'spacenet','os'}
-        if self.config.DATASET == 'cityscale':
-            self.IMAGE_SIZE = 2048
-            # TODO: SAMPLE_MARGIN here is for training, the one in config is for inference
-            self.SAMPLE_MARGIN = 64
-
-            rgb_pattern = './cityscale/20cities/region_{}_sat.png'
-            keypoint_mask_pattern = './cityscale/processed/keypoint_mask_{}.png'
-            road_mask_pattern = './cityscale/processed/road_mask_{}.png'
-            gt_graph_pattern = './cityscale/20cities/region_{}_refine_gt_graph.p'
-            
-            train, val, test = cityscale_data_partition()
-
-            # coord-transform = (r, c) -> (x, y)
-            # takes [N, 2] points
-            coord_transform = lambda v : v[:, ::-1]
-
-        elif self.config.DATASET == 'spacenet':
-            self.IMAGE_SIZE = 400
-            self.SAMPLE_MARGIN = 0
-
-            rgb_pattern = './spacenet/RGB_1.0_meter/{}__rgb.png'
-            keypoint_mask_pattern = './spacenet/processed/keypoint_mask_{}.png'
-            road_mask_pattern = './spacenet/processed/road_mask_{}.png'
-            gt_graph_pattern = './spacenet/RGB_1.0_meter/{}__gt_graph.p'
-            
-            train, val, test = spacenet_data_partition()
-
-            # coord-transform ??? -> (x, y)
-            # takes [N, 2] points
-            coord_transform = lambda v : np.stack([v[:, 1], 400 - v[:, 0]], axis=1)
+        assert self.config.DATASET in {'os'}
         
-        elif self.config.DATASET == 'os':
-            self.IMAGE_SIZE = 256
-            self.SAMPLE_MARGIN = 0
-            
-            # Get dataset_id from config or use default
-            dataset_id = getattr(self.config, 'DATASET_ID', 'default')
-            dataset_dir = f'./os/{dataset_id}'
-            
-            # Initialize DatasetHandler with the datasset directory and enable GCP download
-            dataset_handler = DatasetHandler(dataset_dir, download_from_gcs=False)
-            data_config = load_data_config(dataset_dir, self.config)
-            self.config.DATA_CONFIG = data_config
-            
-            # Ensure dataset exists locally, DatasetHandler will download from GCP if needed
+        
+        self.IMAGE_SIZE = 256
+        self.SAMPLE_MARGIN = 0
+        
+        # Get dataset_id from config or use default
+        dataset_id = getattr(self.config, 'DATASET_ID', 'default')
+        dataset_dir = f'./os/{dataset_id}'
+        
+        # Initialize DatasetHandler with the datasset directory and enable GCP download
+        dataset_handler = DatasetHandler(dataset_dir, download_from_gcs=False)
+        data_config = load_data_config(dataset_dir, self.config)
+        self.config.DATA_CONFIG = data_config
+        
+        # Ensure dataset exists locally, DatasetHandler will download from GCP if needed
+        if not os.path.exists(dataset_dir) or len(dataset_handler.get_all_tile_ids()) == 0:
+            print(f"Dataset {dataset_id} not found locally, attempting to download from GCP...")
+            # DatasetHandler automatically attempts download in its initialization
             if not os.path.exists(dataset_dir) or len(dataset_handler.get_all_tile_ids()) == 0:
-                print(f"Dataset {dataset_id} not found locally, attempting to download from GCP...")
-                # DatasetHandler automatically attempts download in its initialization
-                if not os.path.exists(dataset_dir) or len(dataset_handler.get_all_tile_ids()) == 0:
-                    raise ValueError(f"Failed to download dataset {dataset_id} from GCP")
-                print(f"Successfully downloaded dataset {dataset_id} from GCP")
+                raise ValueError(f"Failed to download dataset {dataset_id} from GCP")
+            print(f"Successfully downloaded dataset {dataset_id} from GCP")
+        
+        # Set patterns for file paths based on the dataset structure from DatasetHandler
+        rgb_pattern = f'{dataset_dir}/{{}}/raster.png'
+        keypoint_mask_pattern = f'{dataset_dir}/{{}}/keypoints.png'
+        road_mask_pattern = f'{dataset_dir}/{{}}/road_mask.png'
+        gt_graph_pattern = f'{dataset_dir}/{{}}/graph.json'
+        coord_transform = None
+        
+        # Get data split or generate one if it doesn't exist
+        data_split = dataset_handler.get_data_split()
+        if data_split is None:
+            print(f"Creating new data split for dataset {dataset_id}")
+            data_split = dataset_handler.generate_data_split()
             
-            # Set patterns for file paths based on the dataset structure from DatasetHandler
-            rgb_pattern = f'{dataset_dir}/{{}}/raster.png'
-            keypoint_mask_pattern = f'{dataset_dir}/{{}}/keypoints.png'
-            road_mask_pattern = f'{dataset_dir}/{{}}/road_mask.png'
-            gt_graph_pattern = f'{dataset_dir}/{{}}/graph.json'
-            coord_transform = None
-            
-            # Get data split or generate one if it doesn't exist
-            data_split = dataset_handler.get_data_split()
-            if data_split is None:
-                print(f"Creating new data split for dataset {dataset_id}")
-                data_split = dataset_handler.generate_data_split()
-                
-            train, val, test = data_split['train'], data_split['validation'], data_split['test']
+        train, val, test = data_split['train'], data_split['validation'], data_split['test']
         
         self.is_train = is_train
 
@@ -411,24 +334,16 @@ class SatMapDataset(Dataset):
             road_mask_path = road_mask_pattern.format(tile_idx)
             keypoint_mask_path = keypoint_mask_pattern.format(tile_idx)
             
-            if self.config.DATASET != 'os':
-                # graph label gen
-                # gt graph: dict for adj list, for cityscale set keys are (r, c) nodes, values are list of (r, c) nodes
-                # I don't know what coord system spacenet uses but we convert them all to (x, y)
-                gt_graph_adj = pickle.load(open(gt_graph_pattern.format(tile_idx),'rb'))
-                if len(gt_graph_adj) == 0:
-                    print(f'===== skipped empty tile {tile_idx} =====')
-                    continue
-            else:
-                try:
-                    with open(gt_graph_pattern.format(tile_idx),'r') as jf:
-                        gt_graph_adj = json.load(jf)
-                except FileNotFoundError:
-                    print(f'===== skipped missing tile {tile_idx} =====')
-                    continue
-                except json.JSONDecodeError:
-                    print(f'===== skipped corrupt graph file for tile {tile_idx} =====')
-                    continue
+    
+            try:
+                with open(gt_graph_pattern.format(tile_idx),'r') as jf:
+                    gt_graph_adj = json.load(jf)
+            except FileNotFoundError:
+                print(f'===== skipped missing tile {tile_idx} =====')
+                continue
+            except json.JSONDecodeError:
+                print(f'===== skipped corrupt graph file for tile {tile_idx} =====')
+                continue
                     
             try:
                 self.rgbs.append(read_rgb_img(rgb_path))

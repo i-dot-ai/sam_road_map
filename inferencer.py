@@ -6,8 +6,7 @@ import cv2
 import json
 
 from utils import load_config, create_output_dir_and_save_config
-from dataset import cityscale_data_partition, read_rgb_img, get_patch_info_one_img
-from dataset import spacenet_data_partition
+from dataset import read_rgb_img, get_patch_info_one_img
 from dataset import os_data_partition
 from model import SAMRoad
 import graph_extraction
@@ -254,19 +253,10 @@ if __name__ == "__main__":
     net.load_state_dict(checkpoint["state_dict"], strict=True)
     net.eval()
     net.to(device)
-
-    if config.DATASET == 'cityscale':
-        _, _, test_img_indices = cityscale_data_partition()
-        rgb_pattern = './cityscale/20cities/region_{}_sat.png'
-        gt_graph_pattern = 'cityscale/20cities/region_{}_graph_gt.pickle'
-    elif config.DATASET == 'spacenet':
-        _, _, test_img_indices = spacenet_data_partition()
-        rgb_pattern = './spacenet/RGB_1.0_meter/{}__rgb.png'
-        gt_graph_pattern = './spacenet/RGB_1.0_meter/{}__gt_graph.p'
-    elif config.DATASET == 'os':
-        _, _, test_img_indices = os_data_partition()
-        rgb_pattern = './os/data/{}.png'
-        gt_graph_pattern = './os/data/{}_graph.json'
+    
+    _, _, test_img_indices = os_data_partition()
+    rgb_pattern = './os/data/{}.png'
+    gt_graph_pattern = './os/data/{}_graph.json'
     
     
     output_dir_prefix = './save/infer_'
@@ -288,20 +278,12 @@ if __name__ == "__main__":
         total_inference_seconds += (end_seconds - start_seconds)
 
         gt_graph_path = gt_graph_pattern.format(img_id)
-        if config.DATASET != 'os':
-            gt_graph = pickle.load(open(gt_graph_path, "rb"))
-            gt_nodes, gt_edges = graph_utils.convert_from_sat2graph_format(gt_graph)
-        else:
-            gt_graph = json.load(open(gt_graph_path, "rb"))
-            gt_nodes, gt_edges = graph_utils.convert_from_nx(gt_graph)
+
+   
+        gt_graph = json.load(open(gt_graph_path, "rb"))
+        gt_nodes, gt_edges = graph_utils.convert_from_nx(gt_graph)
         if len(gt_nodes) == 0:
             gt_nodes = np.zeros([0, 2], dtype=np.float32)
-
-        if config.DATASET == 'spacenet':
-            # convert ??? -> xy -> rc
-            gt_nodes = np.stack([gt_nodes[:, 1], 400 - gt_nodes[:, 0]], axis=1)
-            gt_nodes = gt_nodes[:, ::-1]
-
         # RGB already
         viz_img = np.copy(img)
         img_size = viz_img.shape[0]
@@ -339,12 +321,7 @@ if __name__ == "__main__":
         viz_img = triage.visualize_image_and_graph(viz_img, pred_nodes / img_size, pred_edges, viz_img.shape[0])
         cv2.imwrite(os.path.join(viz_save_dir, f'{img_id}.png'), viz_img)
 
-        # Saves the large map
-        if config.DATASET == 'spacenet':
-            # r, c -> ???
-            pred_nodes = np.stack([400 - pred_nodes[:, 0], pred_nodes[:, 1]], axis=1)
-        #large_map_sat2graph_format = graph_utils.convert_to_sat2graph_format(pred_nodes, pred_edges)
-        
+
         nx_graph=graph_utils.convert_to_nx(pred_nodes, pred_edges)
         graph_save_dir = os.path.join(output_dir, 'graph')
         os.makedirs(graph_save_dir, exist_ok=True)

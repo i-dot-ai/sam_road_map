@@ -519,26 +519,15 @@ def save_nx_to_json(graph, filepath):
 
 def igraph_from_adj_dict(graph, coord_transform,dataset=None):
     # Edges will be de-duped
-    if dataset == 'os':
-        nodes,edges=convert_from_nx(graph)
-    else:
-        nodes, edges = convert_from_sat2graph_format(graph)
+
+    nodes,edges=convert_from_nx(graph)
+
     n_vertices = nodes.shape[0]
     if n_vertices == 0:
         nodes = np.zeros((0, 2), dtype=nodes.dtype)
     edges = set([(min(src, tgt), max(src, tgt)) for src, tgt in edges])
     g = ig.Graph(n_vertices, list(edges))
-    if dataset == 'os':
-        g.vs['point'] = nodes
-        return g
-    try:
-        g.vs['point'] = coord_transform(nodes)  # to xy
-    except Exception:
-        print("==================")
-        print(nodes.shape)
-        print(nodes)
-        import pdb
-        pdb.set_trace()
+    g.vs['point'] = nodes
     return g
 
 def get_line_bbox(line):
