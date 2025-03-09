@@ -1,5 +1,5 @@
 DATASET: 'os'
-DATASET_ID: 'os_sparse_20250307_1749'
+DATASET_ID: 'os_sparse_20250307_1717'
 
 # IN1k + MAE only
 NO_SAM: False
@@ -8,7 +8,7 @@ SAM_VERSION: 'vit_b'
 SAM_CKPT_PATH: 'sam/sam_ckpts/sam_vit_b_01ec64.pth'
 PATCH_SIZE: 256
 BATCH_SIZE: 64
-DATA_WORKER_NUM: 1
+DATA_WORKER_NUM: 8
 TRAIN_EPOCHS: 100
 BASE_LR: 0.001
 FREEZE_ENCODER: False

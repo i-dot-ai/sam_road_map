@@ -19,12 +19,12 @@ from lightning.pytorch.callbacks import LearningRateMonitor
 parser = ArgumentParser()
 parser.add_argument(
     "--config",
-    default=None,
+    default='config/toponet_vitb_256_os.yaml',
     help="config file (.yml) containing the hyper-parameters for training. "
     "If None, use the nnU-Net config. See /config for examples.",
 )
 parser.add_argument(
-    "--checkpoint", default=None, help="checkpoint of the model to test."
+    "--checkpoint", default='output/os_sparse_20250307_1717_new_dataset_08_0824_20250308_082427/epoch=99-step=5100.ckpt', help="checkpoint of the model to test."
 )
 parser.add_argument(
     "--precision", default=16, help="32 or 16"

@@ -109,7 +109,7 @@ if __name__ == "__main__":
         collate_fn=graph_collate_fn,
     )
 
-    checkpoint_callback = ModelCheckpoint(every_n_epochs=1, save_top_k=-1, dirpath=shared_dir)
+    checkpoint_callback = ModelCheckpoint(every_n_epochs=5, save_top_k=-1, dirpath=shared_dir)
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
     # Initialize WandbLogger with the same directory
@@ -128,6 +128,7 @@ if __name__ == "__main__":
         # strategy='ddp_find_unused_parameters_true',
         precision=args.precision,
         default_root_dir=shared_dir,  # Using the shared directory
+        devices=1,
         # profiler=profiler
         )
 

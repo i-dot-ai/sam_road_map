@@ -360,7 +360,7 @@ class SatMapDataset(Dataset):
             dataset_dir = f'./os/{dataset_id}'
             
             # Initialize DatasetHandler with the datasset directory and enable GCP download
-            dataset_handler = DatasetHandler(dataset_dir, download_from_gcs=True)
+            dataset_handler = DatasetHandler(dataset_dir, download_from_gcs=False)
             data_config = load_data_config(dataset_dir, self.config)
             self.config.DATA_CONFIG = data_config
             
