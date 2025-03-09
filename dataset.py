@@ -454,20 +454,17 @@ class SatMapDataset(Dataset):
 
     def __len__(self):
         if self.is_train:
-            # Pixel seen in one epoch ~ 17 x total pixels in training set
-            if self.config.DATASET == 'cityscale':
-                return max(1, int(self.IMAGE_SIZE / self.config.PATCH_SIZE)) ** 2 * 2500
-            elif self.config.DATASET == 'spacenet':
-                return 84667
-            elif self.config.DATASET == 'os':
-                return len(self.rgbs)
+            # Return the actual number of images in the dataset
+            return len(self.rgbs)
         else:
             return len(self.eval_patches)
 
     def __getitem__(self, idx):
-        # Sample a patch.
+        # Sample a patch using the provided index
         if self.is_train:
-            img_idx = np.random.randint(low=0, high=len(self.rgbs))
+            # Use the provided index to select the image
+            img_idx = idx
+            # Still randomly select the patch position within the image
             begin_x = np.random.randint(low=self.sample_min, high=self.sample_max+1)
             begin_y = np.random.randint(low=self.sample_min, high=self.sample_max+1)
             end_x, end_y = begin_x + self.config.PATCH_SIZE, begin_y + self.config.PATCH_SIZE
