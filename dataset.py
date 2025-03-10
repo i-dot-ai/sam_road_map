@@ -263,6 +263,9 @@ def graph_collate_fn(batch):
                 padded_x = torch.concat([x, torch.zeros(pad_num, 2)], dim=0)
                 padded.append(padded_x)
             collated[key] = torch.stack(padded, dim=0)
+        elif key == 'tile_class':
+            # Handle string values for tile_class separately
+            collated[key] = [item[key] for item in batch]
         else:
             collated[key] = torch.stack([item[key] for item in batch], dim=0)
     return collated
@@ -297,6 +300,7 @@ class SatMapDataset(Dataset):
             self.tile_classes = {}
             # Load dataset index to get tile metadata
             self.dataset_index = dataset_handler.dataset_index
+            logging.info(f"Working with a composite dataset: {dataset_id}")
         
         # Ensure dataset exists locally, DatasetHandler will download from GCP if needed
         if not os.path.exists(dataset_dir) or len(dataset_handler.get_all_tile_ids()) == 0:
@@ -339,6 +343,10 @@ class SatMapDataset(Dataset):
             tile_indices = tile_indices[:4]
         ##### FAST DEBUG
 
+        # Keep track of which index corresponds to which tile
+        self.idx_to_tile = {}
+        processed_tile_count = 0
+
         for tile_idx in tile_indices:
             # print(f'loading tile {tile_idx}')
             rgb_path = rgb_pattern.format(tile_idx)
@@ -363,6 +371,10 @@ class SatMapDataset(Dataset):
                 graph_label_generator = GraphLabelGenerator(config, gt_graph_adj, coord_transform)
                 self.graph_label_generators.append(graph_label_generator)
                 
+                # Store mapping from processed index to tile_idx
+                self.idx_to_tile[processed_tile_count] = tile_idx
+                processed_tile_count += 1
+                
                 # Store tile class for composite datasets
                 if self.is_composite and tile_idx in self.dataset_index['tiles']:
                     tile_metadata = self.dataset_index['tiles'][tile_idx]
@@ -372,9 +384,18 @@ class SatMapDataset(Dataset):
             except Exception as e:
                 print(f'===== error loading tile {tile_idx}: {str(e)} =====')
                 continue
+                
         if self.is_composite:
             self.class_distribution = self.get_class_distribution()
-            logging.info(f'Class distribution: {self.class_distribution}')
+            logging.info(f'Class distribution in {dataset_id}: {self.class_distribution}')
+            
+            # Calculate class weights for better logging
+            total_samples = sum(self.class_distribution.values())
+            self.class_weights = {cls: total_samples / count for cls, count in self.class_distribution.items()}
+            logging.info(f'Class weights: {self.class_weights}')
+            
+        # Update tile_indices to only include successfully loaded tiles
+        self.tile_indices = [self.idx_to_tile[i] for i in range(processed_tile_count)]
         
         self.sample_min = self.SAMPLE_MARGIN
         self.sample_max = self.IMAGE_SIZE - (self.config.PATCH_SIZE + self.SAMPLE_MARGIN)
@@ -382,7 +403,7 @@ class SatMapDataset(Dataset):
         if not self.is_train:
             eval_patches_per_edge = math.ceil((self.IMAGE_SIZE - 2 * self.SAMPLE_MARGIN) / self.config.PATCH_SIZE)
             self.eval_patches = []
-            for i in range(len(tile_indices)):
+            for i in range(len(self.rgbs)):
                 self.eval_patches += get_patch_info_one_img(
                     i, self.IMAGE_SIZE, self.SAMPLE_MARGIN, self.config.PATCH_SIZE, eval_patches_per_edge
                 )
@@ -415,6 +436,31 @@ class SatMapDataset(Dataset):
             class_counts[class_name] = class_counts.get(class_name, 0) + 1
             
         return class_counts
+    
+    def calculate_sample_weights(self):
+        """Calculate sample weights based on class distribution.
+        
+        Returns:
+            A list of weights, one per sample
+        """
+        if not self.is_composite:
+            return [1.0] * len(self)
+            
+        # Calculate class weights (inversely proportional to frequency)
+        total_samples = sum(self.class_distribution.values())
+        class_weights = {cls: total_samples / count for cls, count in self.class_distribution.items()}
+        
+        # Create sample weights array
+        sample_weights = []
+        for i in range(len(self)):
+            tile_idx = self.tile_indices[i % len(self.tile_indices)]  # Handle case when __len__ returns a different value
+            tile_class = self.get_tile_class(tile_idx)
+            if tile_class and tile_class in class_weights:
+                sample_weights.append(class_weights[tile_class])
+            else:
+                sample_weights.append(1.0)
+                
+        return sample_weights
 
     def __len__(self):
         if self.is_train:
@@ -424,16 +470,12 @@ class SatMapDataset(Dataset):
             return len(self.eval_patches)
 
     def __getitem__(self, idx):
-        
-        if self.is_composite:
-            tile_idx = self.tile_indices[idx]
-            tile_class = self.get_tile_class(tile_idx)
-            
-            
         # Sample a patch using the provided index
         if self.is_train:
             # Use the provided index to select the image
             img_idx = idx
+            # Get corresponding tile_idx
+            tile_idx = self.idx_to_tile.get(img_idx)
             # Still randomly select the patch position within the image
             begin_x = np.random.randint(low=self.sample_min, high=self.sample_max+1)
             begin_y = np.random.randint(low=self.sample_min, high=self.sample_max+1)
@@ -441,6 +483,12 @@ class SatMapDataset(Dataset):
         else:
             # Returns eval patch
             img_idx, (begin_x, begin_y), (end_x, end_y) = self.eval_patches[idx]
+            tile_idx = self.idx_to_tile.get(img_idx)
+            
+        # Get tile class if this is a composite dataset
+        tile_class = None
+        if self.is_composite and tile_idx is not None:
+            tile_class = self.get_tile_class(tile_idx)
         
         # Crop patch imgs and masks
         rgb_patch = self.rgbs[img_idx][begin_y:end_y, begin_x:end_x, :]

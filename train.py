@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from utils import load_config, create_output_dir_and_save_config, upload_to_gcs_bucket
 from dataset import SatMapDataset, graph_collate_fn
 from model import SAMRoad
+from torch.utils.data import WeightedRandomSampler  # Added for class balancing
 
 import wandb
 
@@ -91,14 +92,67 @@ if __name__ == "__main__":
 
     train_ds, val_ds = SatMapDataset(config, is_train=True, dev_run=dev_run), SatMapDataset(config, is_train=False, dev_run=dev_run)
 
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=config.BATCH_SIZE,
-        shuffle=True,
-        num_workers=config.DATA_WORKER_NUM,
-        pin_memory=True,
-        collate_fn=graph_collate_fn,
-    )
+    # Setup weighted random sampler for class imbalance if this is a composite dataset
+    if hasattr(train_ds, 'is_composite') and train_ds.is_composite:
+        logging.info("Using weighted random sampler for composite dataset")
+        
+        # Get class distribution from dataset
+        class_distribution = train_ds.get_class_distribution()
+        if class_distribution:
+            # Calculate class weights (inversely proportional to class frequency)
+            total_samples = sum(class_distribution.values())
+            class_weights = {cls: total_samples / count for cls, count in class_distribution.items()}
+            
+            # Create sample weights array (one weight per dataset sample)
+            sample_weights = []
+            for i in range(len(train_ds)):
+                # Get tile index for this sample
+                tile_idx = train_ds.tile_indices[i]
+                # Get tile class and its weight
+                tile_class = train_ds.get_tile_class(tile_idx)
+                if tile_class and tile_class in class_weights:
+                    sample_weights.append(class_weights[tile_class])
+                else:
+                    sample_weights.append(1.0)
+            
+            # Create the sampler
+            sampler = WeightedRandomSampler(
+                weights=torch.DoubleTensor(sample_weights),
+                num_samples=len(sample_weights),
+                replacement=True
+            )
+            
+            # Use the sampler in the DataLoader
+            train_loader = DataLoader(
+                train_ds,
+                batch_size=config.BATCH_SIZE,
+                sampler=sampler,  # Use sampler instead of shuffle
+                num_workers=config.DATA_WORKER_NUM,
+                pin_memory=True,
+                collate_fn=graph_collate_fn,
+            )
+            
+            logging.info(f"Created weighted sampler with class weights: {class_weights}")
+        else:
+            logging.warning("Composite dataset detected but no class distribution found")
+            train_loader = DataLoader(
+                train_ds,
+                batch_size=config.BATCH_SIZE,
+                shuffle=True,
+                num_workers=config.DATA_WORKER_NUM,
+                pin_memory=True,
+                collate_fn=graph_collate_fn,
+            )
+    else:
+        # Use regular shuffling for non-composite datasets
+        train_loader = DataLoader(
+            train_ds,
+            batch_size=config.BATCH_SIZE,
+            shuffle=True,
+            num_workers=config.DATA_WORKER_NUM,
+            pin_memory=True,
+            collate_fn=graph_collate_fn,
+        )
 
     val_loader = DataLoader(
         val_ds,
