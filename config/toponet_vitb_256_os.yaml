@@ -1,5 +1,5 @@
 DATASET: 'os'
-DATASET_ID: 'os_sparse_20250307_1717'
+DATASET_ID: 'os_composite_bw_color'
 
 # IN1k + MAE only
 NO_SAM: False

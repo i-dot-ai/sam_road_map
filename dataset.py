@@ -10,6 +10,7 @@ import pickle
 import os
 import addict
 import json
+import logging
 from utils import load_data_config
 # Import DatasetHandler for GCP download functionality
 from extract.src.extractors.georeferencers.utils.get_datsets import DatasetHandler
@@ -284,8 +285,18 @@ class SatMapDataset(Dataset):
         
         # Initialize DatasetHandler with the datasset directory and enable GCP download
         dataset_handler = DatasetHandler(dataset_dir, download_from_gcs=False)
+        self.dataset_handler = dataset_handler  # Store reference to dataset_handler
         data_config = load_data_config(dataset_dir, self.config)
         self.config.DATA_CONFIG = data_config
+        
+        # Check if this is a composite dataset
+        self.is_composite = False
+        if hasattr(data_config, 'metadata') and data_config.metadata.get('is_composite', False):
+            self.is_composite = True
+            # Initialize dict to store tile classes
+            self.tile_classes = {}
+            # Load dataset index to get tile metadata
+            self.dataset_index = dataset_handler.dataset_index
         
         # Ensure dataset exists locally, DatasetHandler will download from GCP if needed
         if not os.path.exists(dataset_dir) or len(dataset_handler.get_all_tile_ids()) == 0:
@@ -351,9 +362,19 @@ class SatMapDataset(Dataset):
                 self.keypoint_masks.append(cv2.imread(keypoint_mask_path, cv2.IMREAD_GRAYSCALE))
                 graph_label_generator = GraphLabelGenerator(config, gt_graph_adj, coord_transform)
                 self.graph_label_generators.append(graph_label_generator)
+                
+                # Store tile class for composite datasets
+                if self.is_composite and tile_idx in self.dataset_index['tiles']:
+                    tile_metadata = self.dataset_index['tiles'][tile_idx]
+                    if 'source_dataset' in tile_metadata:
+                        self.tile_classes[tile_idx] = tile_metadata['source_dataset']
+                
             except Exception as e:
                 print(f'===== error loading tile {tile_idx}: {str(e)} =====')
                 continue
+        if self.is_composite:
+            self.class_distribution = self.get_class_distribution()
+            logging.info(f'Class distribution: {self.class_distribution}')
         
         self.sample_min = self.SAMPLE_MARGIN
         self.sample_max = self.IMAGE_SIZE - (self.config.PATCH_SIZE + self.SAMPLE_MARGIN)
@@ -366,6 +387,34 @@ class SatMapDataset(Dataset):
                     i, self.IMAGE_SIZE, self.SAMPLE_MARGIN, self.config.PATCH_SIZE, eval_patches_per_edge
                 )
         
+    def get_tile_class(self, tile_idx):
+        """Return the class/source dataset of the given tile.
+        
+        Args:
+            tile_idx: The tile ID to query
+            
+        Returns:
+            The source_dataset (class) of the tile if available, None otherwise
+        """
+        if not self.is_composite:
+            return None
+        
+        return self.tile_classes.get(tile_idx, None)
+    
+    def get_class_distribution(self):
+        """Count the total number of each class in the dataset.
+        
+        Returns:
+            A dictionary with class names as keys and counts as values
+        """
+        if not self.is_composite:
+            return {}
+        
+        class_counts = {}
+        for tile_idx, class_name in self.tile_classes.items():
+            class_counts[class_name] = class_counts.get(class_name, 0) + 1
+            
+        return class_counts
 
     def __len__(self):
         if self.is_train:
@@ -375,6 +424,12 @@ class SatMapDataset(Dataset):
             return len(self.eval_patches)
 
     def __getitem__(self, idx):
+        
+        if self.is_composite:
+            tile_idx = self.tile_indices[idx]
+            tile_class = self.get_tile_class(tile_idx)
+            
+            
         # Sample a patch using the provided index
         if self.is_train:
             # Use the provided index to select the image
@@ -408,6 +463,7 @@ class SatMapDataset(Dataset):
         
         pairs, connected, valid = zip(*topo_samples)
         
+        
         # rgb: [H, W, 3] 0-255
         # masks: [H, W] 0-1
         return {
@@ -419,6 +475,7 @@ class SatMapDataset(Dataset):
             'pairs': torch.tensor(pairs, dtype=torch.int32),
             'connected': torch.tensor(connected, dtype=torch.bool),
             'valid': torch.tensor(valid, dtype=torch.bool),
+            'tile_class': tile_class,
         }
 
 
