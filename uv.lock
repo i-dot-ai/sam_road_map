@@ -780,7 +780,7 @@ wheels = [
 [[package]]
 name = "extract"
 version = "0.1.0"
-source = { git = "https://github.com/i-dot-ai/planning-extract/?branch=dev-georeference#3b4a7172864a7a1444cb5429b6f002913466136a" }
+source = { git = "https://github.com/i-dot-ai/planning-extract/?branch=dev-georeference#f5051ba3c0d4409d5ea0ec2f38d150ecfcd0b2a6" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },

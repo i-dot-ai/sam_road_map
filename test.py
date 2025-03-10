@@ -24,7 +24,7 @@ parser.add_argument(
     "If None, use the nnU-Net config. See /config for examples.",
 )
 parser.add_argument(
-    "--checkpoint", default='output/os_sparse_20250307_1717_new_dataset_08_0824_20250308_082427/epoch=99-step=5100.ckpt', help="checkpoint of the model to test."
+    "--checkpoint", default='output/os_composite_bw_color_new_dataset_09_1142_20250309_114245/epoch=99-step=6000.ckpt', help="checkpoint of the model to test."
 )
 parser.add_argument(
     "--precision", default=16, help="32 or 16"
