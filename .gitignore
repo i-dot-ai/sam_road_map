@@ -1,11 +1,20 @@
+google_creds.json
+.env
 spacenet
 cityscale
 *.pyc
 *.lprof
 *.png
+*.out
 wandb/
 lightning_logs/
 sam_ckpts/
-os/data/
-os/data*/
+output/
+GCP_creds.json
+# Ignore everything in os directory
+os/*
+# But not these files
+!os/data_split.json
+!os/generate_train_test_split.py
 os/tiles/
+save/

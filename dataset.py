@@ -10,6 +10,10 @@ import pickle
 import os
 import addict
 import json
+import logging
+from utils import load_data_config
+# Import DatasetHandler for GCP download functionality
+from extract.extractors.georeferencers.utils.get_datsets import DatasetHandler
 
 
 
@@ -17,40 +21,6 @@ def read_rgb_img(path):
     bgr = cv2.imread(path)
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     return rgb
-
-def cityscale_data_partition():
-    # dataset partition
-    indrange_train = []
-    indrange_test = []
-    indrange_validation = []
-
-    for x in range(180):
-        if x % 10 < 8 :
-            indrange_train.append(x)
-
-        if x % 10 == 9:
-            indrange_test.append(x)
-
-        if x % 20 == 18:
-            indrange_validation.append(x)
-
-        if x % 20 == 8:
-            indrange_test.append(x)
-    return indrange_train, indrange_validation, indrange_test
-
-
-def spacenet_data_partition():
-    # dataset partition
-    with open('./spacenet/data_split.json','r') as jf:
-        data_list = json.load(jf)
-        # data_list = data_list['test'] + data_list['validation'] + data_list['train']
-    # train_list = [tile_index for _, tile_index in data_list['train']]
-    # val_list = [tile_index for _, tile_index in data_list['validation']]
-    # test_list = [tile_index for _, tile_index in data_list['test']]
-    train_list = data_list['train']
-    val_list = data_list['validation']
-    test_list = data_list['test']
-    return train_list, val_list, test_list
 
 def os_data_partition():
     with open('./os/data_split.json','r') as jf:
@@ -244,19 +214,6 @@ def test_graph_label_generator():
     if not os.path.exists('debug'):
         os.mkdir('debug')
 
-    dataset = 'spacenet'
-    if dataset == 'cityscale':
-        rgb_path = './cityscale/20cities/region_166_sat.png'
-        # Load GT Graph
-        gt_graph = pickle.load(open(f"./cityscale/20cities/region_166_refine_gt_graph.p",'rb'))
-        coord_transform = lambda v : v[:, ::-1]
-    elif dataset == 'spacenet':
-        rgb_path = 'spacenet/RGB_1.0_meter/AOI_2_Vegas_210__rgb.png'
-        # Load GT Graph
-        gt_graph = pickle.load(open(f"spacenet/RGB_1.0_meter/AOI_2_Vegas_210__gt_graph.p",'rb'))
-        # gt_graph = pickle.load(open(f"spacenet/RGB_1.0_meter/AOI_4_Shanghai_1061__gt_graph_dense_spacenet.p",'rb'))
-        
-        coord_transform = lambda v : np.stack([v[:, 1], 400 - v[:, 0]], axis=1)
         # coord_transform = lambda v : v[:, ::-1]
     rgb = read_rgb_img(rgb_path)
     config = addict.Dict()
@@ -306,6 +263,9 @@ def graph_collate_fn(batch):
                 padded_x = torch.concat([x, torch.zeros(pad_num, 2)], dim=0)
                 padded.append(padded_x)
             collated[key] = torch.stack(padded, dim=0)
+        elif key == 'tile_class':
+            # Handle string values for tile_class separately
+            collated[key] = [item[key] for item in batch]
         else:
             collated[key] = torch.stack([item[key] for item in batch], dim=0)
     return collated
@@ -316,50 +276,55 @@ class SatMapDataset(Dataset):
     def __init__(self, config, is_train, dev_run=False):
         self.config = config
         
-        assert self.config.DATASET in {'cityscale', 'spacenet','os'}
-        if self.config.DATASET == 'cityscale':
-            self.IMAGE_SIZE = 2048
-            # TODO: SAMPLE_MARGIN here is for training, the one in config is for inference
-            self.SAMPLE_MARGIN = 64
-
-            rgb_pattern = './cityscale/20cities/region_{}_sat.png'
-            keypoint_mask_pattern = './cityscale/processed/keypoint_mask_{}.png'
-            road_mask_pattern = './cityscale/processed/road_mask_{}.png'
-            gt_graph_pattern = './cityscale/20cities/region_{}_refine_gt_graph.p'
-            
-            train, val, test = cityscale_data_partition()
-
-            # coord-transform = (r, c) -> (x, y)
-            # takes [N, 2] points
-            coord_transform = lambda v : v[:, ::-1]
-
-        elif self.config.DATASET == 'spacenet':
-            self.IMAGE_SIZE = 400
-            self.SAMPLE_MARGIN = 0
-
-            rgb_pattern = './spacenet/RGB_1.0_meter/{}__rgb.png'
-            keypoint_mask_pattern = './spacenet/processed/keypoint_mask_{}.png'
-            road_mask_pattern = './spacenet/processed/road_mask_{}.png'
-            gt_graph_pattern = './spacenet/RGB_1.0_meter/{}__gt_graph.p'
-            
-            train, val, test = spacenet_data_partition()
-
-            # coord-transform ??? -> (x, y)
-            # takes [N, 2] points
-            coord_transform = lambda v : np.stack([v[:, 1], 400 - v[:, 0]], axis=1)
+        assert self.config.DATASET in {'os'}
         
-        elif self.config.DATASET == 'os':
-            self.IMAGE_SIZE = 256
-            self.SAMPLE_MARGIN = 0
-
-            rgb_pattern = './os/data/{}.png'
-            keypoint_mask_pattern = './os/data/{}_keypoints.png'
-            road_mask_pattern = './os/data/{}_road_mask.png'
-            gt_graph_pattern = './os/data/{}_graph.json'
-            coord_transform = None
+        
+        self.IMAGE_SIZE = 256
+        self.SAMPLE_MARGIN = 0
+        
+        # Get dataset_id from config or use default
+        dataset_id = getattr(self.config, 'DATASET_ID', 'default')
+        dataset_dir = f'./os/{dataset_id}'
+        
+        # Initialize DatasetHandler with the datasset directory and enable GCP download
+        dataset_handler = DatasetHandler(dataset_dir, download_from_gcs=False)
+        self.dataset_handler = dataset_handler  # Store reference to dataset_handler
+        data_config = load_data_config(dataset_dir, self.config)
+        self.config.DATA_CONFIG = data_config
+        
+        # Check if this is a composite dataset
+        self.is_composite = False
+        if hasattr(data_config, 'metadata') and data_config.metadata.get('is_composite', False):
+            self.is_composite = True
+            # Initialize dict to store tile classes
+            self.tile_classes = {}
+            # Load dataset index to get tile metadata
+            self.dataset_index = dataset_handler.dataset_index
+            logging.info(f"Working with a composite dataset: {dataset_id}")
+        
+        # Ensure dataset exists locally, DatasetHandler will download from GCP if needed
+        if not os.path.exists(dataset_dir) or len(dataset_handler.get_all_tile_ids()) == 0:
+            print(f"Dataset {dataset_id} not found locally, attempting to download from GCP...")
+            # DatasetHandler automatically attempts download in its initialization
+            if not os.path.exists(dataset_dir) or len(dataset_handler.get_all_tile_ids()) == 0:
+                raise ValueError(f"Failed to download dataset {dataset_id} from GCP")
+            print(f"Successfully downloaded dataset {dataset_id} from GCP")
+        
+        # Set patterns for file paths based on the dataset structure from DatasetHandler
+        rgb_pattern = f'{dataset_dir}/{{}}/raster.png'
+        keypoint_mask_pattern = f'{dataset_dir}/{{}}/keypoints.png'
+        road_mask_pattern = f'{dataset_dir}/{{}}/road_mask.png'
+        gt_graph_pattern = f'{dataset_dir}/{{}}/graph.json'
+        coord_transform = None
+        
+        # Get data split or generate one if it doesn't exist
+        data_split = dataset_handler.get_data_split()
+        if data_split is None:
+            print(f"Creating new data split for dataset {dataset_id}")
+            data_split = dataset_handler.generate_data_split()
             
-            train, val, test = os_data_partition()
-            
+        train, val, test = data_split['train'], data_split['validation'], data_split['test']
+        
         self.is_train = is_train
 
         train_split = train + val
@@ -378,29 +343,59 @@ class SatMapDataset(Dataset):
             tile_indices = tile_indices[:4]
         ##### FAST DEBUG
 
+        # Keep track of which index corresponds to which tile
+        self.idx_to_tile = {}
+        processed_tile_count = 0
+
         for tile_idx in tile_indices:
             # print(f'loading tile {tile_idx}')
             rgb_path = rgb_pattern.format(tile_idx)
             road_mask_path = road_mask_pattern.format(tile_idx)
             keypoint_mask_path = keypoint_mask_pattern.format(tile_idx)
-            with open(gt_graph_pattern.format(tile_idx),'r') as jf:
-                gt_graph_adj = json.load(jf)
-
-            if self.config.DATASET != 'os':
-                # graph label gen
-                # gt graph: dict for adj list, for cityscale set keys are (r, c) nodes, values are list of (r, c) nodes
-                # I don't know what coord system spacenet uses but we convert them all to (x, y)
-                gt_graph_adj = pickle.load(open(gt_graph_pattern.format(tile_idx),'rb'))
-                if len(gt_graph_adj) == 0:
-                    print(f'===== skipped empty tile {tile_idx} =====')
-                    continue
-
-            self.rgbs.append(read_rgb_img(rgb_path))
-            self.road_masks.append(cv2.imread(road_mask_path, cv2.IMREAD_GRAYSCALE))
-            self.keypoint_masks.append(cv2.imread(keypoint_mask_path, cv2.IMREAD_GRAYSCALE))
-            graph_label_generator = GraphLabelGenerator(config, gt_graph_adj, coord_transform)
-            self.graph_label_generators.append(graph_label_generator)
             
+    
+            try:
+                with open(gt_graph_pattern.format(tile_idx),'r') as jf:
+                    gt_graph_adj = json.load(jf)
+            except FileNotFoundError:
+                print(f'===== skipped missing tile {tile_idx} =====')
+                continue
+            except json.JSONDecodeError:
+                print(f'===== skipped corrupt graph file for tile {tile_idx} =====')
+                continue
+                    
+            try:
+                self.rgbs.append(read_rgb_img(rgb_path))
+                self.road_masks.append(cv2.imread(road_mask_path, cv2.IMREAD_GRAYSCALE))
+                self.keypoint_masks.append(cv2.imread(keypoint_mask_path, cv2.IMREAD_GRAYSCALE))
+                graph_label_generator = GraphLabelGenerator(config, gt_graph_adj, coord_transform)
+                self.graph_label_generators.append(graph_label_generator)
+                
+                # Store mapping from processed index to tile_idx
+                self.idx_to_tile[processed_tile_count] = tile_idx
+                processed_tile_count += 1
+                
+                # Store tile class for composite datasets
+                if self.is_composite and tile_idx in self.dataset_index['tiles']:
+                    tile_metadata = self.dataset_index['tiles'][tile_idx]
+                    if 'source_dataset' in tile_metadata:
+                        self.tile_classes[tile_idx] = tile_metadata['source_dataset']
+                
+            except Exception as e:
+                print(f'===== error loading tile {tile_idx}: {str(e)} =====')
+                continue
+                
+        if self.is_composite:
+            self.class_distribution = self.get_class_distribution()
+            logging.info(f'Class distribution in {dataset_id}: {self.class_distribution}')
+            
+            # Calculate class weights for better logging
+            total_samples = sum(self.class_distribution.values())
+            self.class_weights = {cls: total_samples / count for cls, count in self.class_distribution.items()}
+            logging.info(f'Class weights: {self.class_weights}')
+            
+        # Update tile_indices to only include successfully loaded tiles
+        self.tile_indices = [self.idx_to_tile[i] for i in range(processed_tile_count)]
         
         self.sample_min = self.SAMPLE_MARGIN
         self.sample_max = self.IMAGE_SIZE - (self.config.PATCH_SIZE + self.SAMPLE_MARGIN)
@@ -408,33 +403,92 @@ class SatMapDataset(Dataset):
         if not self.is_train:
             eval_patches_per_edge = math.ceil((self.IMAGE_SIZE - 2 * self.SAMPLE_MARGIN) / self.config.PATCH_SIZE)
             self.eval_patches = []
-            for i in range(len(tile_indices)):
+            for i in range(len(self.rgbs)):
                 self.eval_patches += get_patch_info_one_img(
                     i, self.IMAGE_SIZE, self.SAMPLE_MARGIN, self.config.PATCH_SIZE, eval_patches_per_edge
                 )
+        
+    def get_tile_class(self, tile_idx):
+        """Return the class/source dataset of the given tile.
+        
+        Args:
+            tile_idx: The tile ID to query
+            
+        Returns:
+            The source_dataset (class) of the tile if available, None otherwise
+        """
+        if not self.is_composite:
+            return None
+        
+        return self.tile_classes.get(tile_idx, None)
+    
+    def get_class_distribution(self):
+        """Count the total number of each class in the dataset.
+        
+        Returns:
+            A dictionary with class names as keys and counts as values
+        """
+        if not self.is_composite:
+            return {}
+        
+        class_counts = {}
+        for tile_idx, class_name in self.tile_classes.items():
+            class_counts[class_name] = class_counts.get(class_name, 0) + 1
+            
+        return class_counts
+    
+    def calculate_sample_weights(self):
+        """Calculate sample weights based on class distribution.
+        
+        Returns:
+            A list of weights, one per sample
+        """
+        if not self.is_composite:
+            return [1.0] * len(self)
+            
+        # Calculate class weights (inversely proportional to frequency)
+        total_samples = sum(self.class_distribution.values())
+        class_weights = {cls: total_samples / count for cls, count in self.class_distribution.items()}
+        
+        # Create sample weights array
+        sample_weights = []
+        for i in range(len(self)):
+            tile_idx = self.tile_indices[i % len(self.tile_indices)]  # Handle case when __len__ returns a different value
+            tile_class = self.get_tile_class(tile_idx)
+            if tile_class and tile_class in class_weights:
+                sample_weights.append(class_weights[tile_class])
+            else:
+                sample_weights.append(1.0)
+                
+        return sample_weights
 
     def __len__(self):
         if self.is_train:
-            # Pixel seen in one epoch ~ 17 x total pixels in training set
-            if self.config.DATASET == 'cityscale':
-                return max(1, int(self.IMAGE_SIZE / self.config.PATCH_SIZE)) ** 2 * 2500
-            elif self.config.DATASET == 'spacenet':
-                return 84667
-            elif self.config.DATASET == 'os':
-                return len(self.rgbs)
+            # Return the actual number of images in the dataset
+            return len(self.rgbs)
         else:
             return len(self.eval_patches)
 
     def __getitem__(self, idx):
-        # Sample a patch.
+        # Sample a patch using the provided index
         if self.is_train:
-            img_idx = np.random.randint(low=0, high=len(self.rgbs))
+            # Use the provided index to select the image
+            img_idx = idx
+            # Get corresponding tile_idx
+            tile_idx = self.idx_to_tile.get(img_idx)
+            # Still randomly select the patch position within the image
             begin_x = np.random.randint(low=self.sample_min, high=self.sample_max+1)
             begin_y = np.random.randint(low=self.sample_min, high=self.sample_max+1)
             end_x, end_y = begin_x + self.config.PATCH_SIZE, begin_y + self.config.PATCH_SIZE
         else:
             # Returns eval patch
             img_idx, (begin_x, begin_y), (end_x, end_y) = self.eval_patches[idx]
+            tile_idx = self.idx_to_tile.get(img_idx)
+            
+        # Get tile class if this is a composite dataset
+        tile_class = None
+        if self.is_composite and tile_idx is not None:
+            tile_class = self.get_tile_class(tile_idx)
         
         # Crop patch imgs and masks
         rgb_patch = self.rgbs[img_idx][begin_y:end_y, begin_x:end_x, :]
@@ -457,6 +511,7 @@ class SatMapDataset(Dataset):
         
         pairs, connected, valid = zip(*topo_samples)
         
+        
         # rgb: [H, W, 3] 0-255
         # masks: [H, W] 0-1
         return {
@@ -468,6 +523,7 @@ class SatMapDataset(Dataset):
             'pairs': torch.tensor(pairs, dtype=torch.int32),
             'connected': torch.tensor(connected, dtype=torch.bool),
             'valid': torch.tensor(valid, dtype=torch.bool),
+            'tile_class': tile_class,
         }
 
 

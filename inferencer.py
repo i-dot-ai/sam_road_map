@@ -3,10 +3,11 @@ import os
 import imageio
 import torch
 import cv2
+import json
 
 from utils import load_config, create_output_dir_and_save_config
-from dataset import cityscale_data_partition, read_rgb_img, get_patch_info_one_img
-from dataset import spacenet_data_partition
+from dataset import read_rgb_img, get_patch_info_one_img
+from dataset import os_data_partition
 from model import SAMRoad
 import graph_extraction
 import graph_utils
@@ -23,10 +24,10 @@ from argparse import ArgumentParser
 
 parser = ArgumentParser()
 parser.add_argument(
-    "--checkpoint", default=None, help="checkpoint of the model to test."
+    "--checkpoint", default='lightning_logs/London_sparse_lond/checkpoints/epoch=49-step=5950.ckpt', help="checkpoint of the model to test."
 )
 parser.add_argument(
-    "--config", default=None, help="model config."
+    "--config", default='config/toponet_vitb_256_os.yaml', help="model config."
 )
 parser.add_argument(
     "--output_dir", default=None, help="Name of the output dir, if not specified will use timestamp"
@@ -238,7 +239,7 @@ def infer_one_img(net, img, config):
 
 if __name__ == "__main__":
     config = load_config(args.config)
-    
+    config.checkpoint=args.checkpoint
     # Builds eval model    
     device = torch.device("cuda") if args.device == "cuda" else torch.device("cpu")
     # Good when model architecture/input shape are fixed.
@@ -252,15 +253,11 @@ if __name__ == "__main__":
     net.load_state_dict(checkpoint["state_dict"], strict=True)
     net.eval()
     net.to(device)
-
-    if config.DATASET == 'cityscale':
-        _, _, test_img_indices = cityscale_data_partition()
-        rgb_pattern = './cityscale/20cities/region_{}_sat.png'
-        gt_graph_pattern = 'cityscale/20cities/region_{}_graph_gt.pickle'
-    elif config.DATASET == 'spacenet':
-        _, _, test_img_indices = spacenet_data_partition()
-        rgb_pattern = './spacenet/RGB_1.0_meter/{}__rgb.png'
-        gt_graph_pattern = './spacenet/RGB_1.0_meter/{}__gt_graph.p'
+    
+    _, _, test_img_indices = os_data_partition()
+    rgb_pattern = './os/data/{}.png'
+    gt_graph_pattern = './os/data/{}_graph.json'
+    
     
     output_dir_prefix = './save/infer_'
     if args.output_dir:
@@ -281,16 +278,12 @@ if __name__ == "__main__":
         total_inference_seconds += (end_seconds - start_seconds)
 
         gt_graph_path = gt_graph_pattern.format(img_id)
-        gt_graph = pickle.load(open(gt_graph_path, "rb"))
-        gt_nodes, gt_edges = graph_utils.convert_from_sat2graph_format(gt_graph)
+
+   
+        gt_graph = json.load(open(gt_graph_path, "rb"))
+        gt_nodes, gt_edges = graph_utils.convert_from_nx(gt_graph)
         if len(gt_nodes) == 0:
             gt_nodes = np.zeros([0, 2], dtype=np.float32)
-
-        if config.DATASET == 'spacenet':
-            # convert ??? -> xy -> rc
-            gt_nodes = np.stack([gt_nodes[:, 1], 400 - gt_nodes[:, 0]], axis=1)
-            gt_nodes = gt_nodes[:, ::-1]
-
         # RGB already
         viz_img = np.copy(img)
         img_size = viz_img.shape[0]
@@ -328,17 +321,12 @@ if __name__ == "__main__":
         viz_img = triage.visualize_image_and_graph(viz_img, pred_nodes / img_size, pred_edges, viz_img.shape[0])
         cv2.imwrite(os.path.join(viz_save_dir, f'{img_id}.png'), viz_img)
 
-        # Saves the large map
-        if config.DATASET == 'spacenet':
-            # r, c -> ???
-            pred_nodes = np.stack([400 - pred_nodes[:, 0], pred_nodes[:, 1]], axis=1)
-        large_map_sat2graph_format = graph_utils.convert_to_sat2graph_format(pred_nodes, pred_edges)
+
+        nx_graph=graph_utils.convert_to_nx(pred_nodes, pred_edges)
         graph_save_dir = os.path.join(output_dir, 'graph')
-        if not os.path.exists(graph_save_dir):
-            os.makedirs(graph_save_dir)
-        graph_save_path = os.path.join(graph_save_dir, f'{img_id}.p')
-        with open(graph_save_path, 'wb') as file:
-            pickle.dump(large_map_sat2graph_format, file)
+        os.makedirs(graph_save_dir, exist_ok=True)
+        graph_save_path = os.path.join(graph_save_dir, f'{img_id}.json')
+        graph_utils.save_nx_to_json(nx_graph, graph_save_path)
         
         print(f'Done for {img_id}.')
     

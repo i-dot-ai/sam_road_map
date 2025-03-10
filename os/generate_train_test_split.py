@@ -67,4 +67,4 @@ def generate_data_split(data_dir, train_ratio=0.7, val_ratio=0.15, test_ratio=0.
 
 if __name__ == "__main__":
     data_dir = "./os/data"
-    split = generate_data_split(data_dir)
+    split = generate_data_split(data_dir,train_ratio=0.8,val_ratio=0.1,test_ratio=0.1)

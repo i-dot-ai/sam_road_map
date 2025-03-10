@@ -433,6 +433,31 @@ def convert_from_sat2graph_format(graph):
         nodes[idx] = node
     return np.array(nodes), edges
 
+def convert_to_nx(nodes, edges):
+    """
+    Converts nodes and edges arrays to a NetworkX graph.
+    
+    Args:
+        nodes: [N_node, 2] array of (row, col) image coordinates
+        edges: [N_edge, 2] array of (start, end) node indices
+    
+    Returns:
+        NetworkX graph with nodes having pixel_coords and geo_coords attributes
+    """
+    G = nx.Graph()
+    
+    # Add nodes with attributes
+    for idx, (row, col) in enumerate(nodes):
+        # Convert from (row, col) back to (x, y) pixel coordinates
+        G.add_node(str(idx), 
+                  pixel_coords=[int(col), int(row)],  # Convert back to x,y format
+                  geo_coords=None)  # Initialize empty geo coords
+    
+    # Add edges using the node indices
+    for start_idx, end_idx in edges:
+        G.add_edge(str(start_idx), str(end_idx))
+        
+    return G
 
 def convert_from_nx(graph):
     # nx graph, node being (x, y)
@@ -452,6 +477,7 @@ def convert_from_nx(graph):
         edges.append((node_to_idx[node_0], node_to_idx[node_1]))
     
     return np.array(nodes), np.array(edges)
+
 
 def load_nx_from_json(graph_json: dict) -> nx.Graph:
     """
@@ -476,35 +502,32 @@ def load_nx_from_json(graph_json: dict) -> nx.Graph:
             G.add_edge(edge[0], edge[1])
         except:
             G.add_edge(edge['source'], edge['target'])
-
-    
     return G
+
+def save_nx_to_json(graph, filepath):
+    # Saves a NetworkX graph to a JSON file.
+    # graph: NetworkX graph
+    # filepath: Path to the JSON file
+    graph_json = nx.node_link_data(graph)
+    with open(filepath, 'w') as f:
+        json.dump(graph_json, f)    
+
+
 
 
 ### igraph utils for performance
 
 def igraph_from_adj_dict(graph, coord_transform,dataset=None):
     # Edges will be de-duped
-    if dataset == 'os':
-        nodes,edges=convert_from_nx(graph)
-    else:
-        nodes, edges = convert_from_sat2graph_format(graph)
+
+    nodes,edges=convert_from_nx(graph)
+
     n_vertices = nodes.shape[0]
     if n_vertices == 0:
         nodes = np.zeros((0, 2), dtype=nodes.dtype)
     edges = set([(min(src, tgt), max(src, tgt)) for src, tgt in edges])
     g = ig.Graph(n_vertices, list(edges))
-    if dataset == 'os':
-        g.vs['point'] = nodes
-        return g
-    try:
-        g.vs['point'] = coord_transform(nodes)  # to xy
-    except Exception:
-        print("==================")
-        print(nodes.shape)
-        print(nodes)
-        import pdb
-        pdb.set_trace()
+    g.vs['point'] = nodes
     return g
 
 def get_line_bbox(line):
