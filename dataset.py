@@ -273,8 +273,9 @@ def graph_collate_fn(batch):
 
 
 class SatMapDataset(Dataset):
-    def __init__(self, config, is_train, dev_run=False):
+    def __init__(self, config, is_train, dev_run=False, return_graph=True):
         self.config = config
+        self.return_graph = return_graph
         
         assert self.config.DATASET in {'os'}
         
@@ -337,7 +338,7 @@ class SatMapDataset(Dataset):
         # Stores all imgs in memory.
         self.rgbs, self.keypoint_masks, self.road_masks = [], [], []
         # For graph label generation.
-        self.graph_label_generators = []
+        self.graph_label_generators = [] if self.return_graph else None
 
         ##### FAST DEBUG
         if dev_run:
@@ -357,23 +358,27 @@ class SatMapDataset(Dataset):
             keypoint_mask_path = keypoint_mask_pattern.format(tile_idx)
             metadata_path = metadata_pattern.format(tile_idx)
             
-    
-            try:
-                with open(gt_graph_pattern.format(tile_idx),'r') as jf:
-                    gt_graph_adj = json.load(jf)
-            except FileNotFoundError:
-                print(f'===== skipped missing tile {tile_idx} =====')
-                continue
-            except json.JSONDecodeError:
-                print(f'===== skipped corrupt graph file for tile {tile_idx} =====')
-                continue
+            # Only load graph data if return_graph is True
+            if self.return_graph:
+                try:
+                    with open(gt_graph_pattern.format(tile_idx),'r') as jf:
+                        gt_graph_adj = json.load(jf)
+                except FileNotFoundError:
+                    print(f'===== skipped missing tile {tile_idx} =====')
+                    continue
+                except json.JSONDecodeError:
+                    print(f'===== skipped corrupt graph file for tile {tile_idx} =====')
+                    continue
                     
             try:
                 self.rgbs.append(read_rgb_img(rgb_path))
                 self.road_masks.append(cv2.imread(road_mask_path, cv2.IMREAD_GRAYSCALE))
                 self.keypoint_masks.append(cv2.imread(keypoint_mask_path, cv2.IMREAD_GRAYSCALE))
-                graph_label_generator = GraphLabelGenerator(config, gt_graph_adj, coord_transform)
-                self.graph_label_generators.append(graph_label_generator)
+                
+                # Only create graph label generator if return_graph is True
+                if self.return_graph:
+                    graph_label_generator = GraphLabelGenerator(config, gt_graph_adj, coord_transform)
+                    self.graph_label_generators.append(graph_label_generator)
                 
                 # Load metadata if it exists
                 try:
@@ -519,28 +524,33 @@ class SatMapDataset(Dataset):
             keypoint_mask_patch = np.rot90(keypoint_mask_patch, rot_index, [0, 1]).copy()
             road_mask_patch = np.rot90(road_mask_patch, rot_index, [0, 1]).copy()
         
-        # Sample graph labels from patch
-        patch = ((begin_x, begin_y), (end_x, end_y))
-        # points are img (x, y) inside the patch.
-        graph_points, topo_samples = self.graph_label_generators[img_idx].sample_patch(patch, rot_index)
-        
-        pairs, connected, valid = zip(*topo_samples)
-        
-        
-        # rgb: [H, W, 3] 0-255
-        # masks: [H, W] 0-1
-        return {
+        # Base dictionary with non-graph data
+        result = {
             'rgb': torch.tensor(rgb_patch, dtype=torch.float32),
             'keypoint_mask': torch.round(torch.tensor(keypoint_mask_patch, dtype=torch.float32) / 255.0),
             'road_mask': torch.round(torch.tensor(road_mask_patch, dtype=torch.float32) / 255.0),
-            
-            'graph_points': torch.tensor(graph_points, dtype=torch.float32),
-            'pairs': torch.tensor(pairs, dtype=torch.int32),
-            'connected': torch.tensor(connected, dtype=torch.bool),
-            'valid': torch.tensor(valid, dtype=torch.bool),
             'tile_class': tile_class,
             'metadata': metadata,
         }
+        
+        # Only include graph-related data if return_graph is True
+        if self.return_graph:
+            # Sample graph labels from patch
+            patch = ((begin_x, begin_y), (end_x, end_y))
+            # points are img (x, y) inside the patch.
+            graph_points, topo_samples = self.graph_label_generators[img_idx].sample_patch(patch, rot_index)
+            
+            pairs, connected, valid = zip(*topo_samples)
+            
+            # Add graph-related data to the result
+            result.update({
+                'graph_points': torch.tensor(graph_points, dtype=torch.float32),
+                'pairs': torch.tensor(pairs, dtype=torch.int32),
+                'connected': torch.tensor(connected, dtype=torch.bool),
+                'valid': torch.tensor(valid, dtype=torch.bool),
+            })
+        
+        return result
 
 
 if __name__ == '__main__':
