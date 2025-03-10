@@ -778,6 +778,51 @@ wheels = [
 ]
 
 [[package]]
+name = "extract"
+version = "0.1.0"
+source = { git = "https://github.com/i-dot-ai/planning-extract/?branch=dev-georeference#3b4a7172864a7a1444cb5429b6f002913466136a" }
+dependencies = [
+    { name = "aiofiles" },
+    { name = "aiohttp" },
+    { name = "anthropic" },
+    { name = "folium" },
+    { name = "google-genai" },
+    { name = "google-generativeai" },
+    { name = "groundingdino-py" },
+    { name = "instructor", extra = ["google-generativeai", "vertexai"] },
+    { name = "isort" },
+    { name = "jsonref" },
+    { name = "kaleido" },
+    { name = "lightning" },
+    { name = "mapclassify" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "numpydantic" },
+    { name = "open3d" },
+    { name = "opencv-python" },
+    { name = "osmnx" },
+    { name = "pandas" },
+    { name = "pdf2image" },
+    { name = "plotly" },
+    { name = "pre-commit" },
+    { name = "pydantic" },
+    { name = "pypdf" },
+    { name = "pyproj" },
+    { name = "pyqt6" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "python-dotenv" },
+    { name = "scikit-learn" },
+    { name = "segment-geospatial" },
+    { name = "setuptools" },
+    { name = "shapely" },
+    { name = "streamlit" },
+    { name = "streamlit-folium" },
+    { name = "streamlit-pdf-viewer" },
+    { name = "wheel" },
+]
+
+[[package]]
 name = "fastjsonschema"
 version = "2.21.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2692,7 +2737,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.1.0.70"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "nvidia-cublas-cu12", marker = "platform_machine != 'aarch64' and sys_platform == 'linux'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9f/fd/713452cd72343f682b1c7b9321e23829f00b842ceaedcda96e742ea0b0b3/nvidia_cudnn_cu12-9.1.0.70-py3-none-manylinux2014_x86_64.whl", hash = "sha256:165764f44ef8c61fcdfdfdbe769d687e06374059fbb388b6c89ecb0e28793a6f", size = 664752741 },
@@ -2703,7 +2748,7 @@ name = "nvidia-cufft-cu12"
 version = "11.2.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "platform_machine != 'aarch64' and sys_platform == 'linux'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/27/94/3266821f65b92b3138631e9c8e7fe1fb513804ac934485a8d05776e1dd43/nvidia_cufft_cu12-11.2.1.3-py3-none-manylinux2014_x86_64.whl", hash = "sha256:f083fc24912aa410be21fa16d157fed2055dab1cc4b6934a0e03cba69eb242b9", size = 211459117 },
@@ -2722,9 +2767,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.6.1.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
-    { name = "nvidia-cusparse-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "nvidia-cublas-cu12", marker = "platform_machine != 'aarch64' and sys_platform == 'linux'" },
+    { name = "nvidia-cusparse-cu12", marker = "platform_machine != 'aarch64' and sys_platform == 'linux'" },
+    { name = "nvidia-nvjitlink-cu12", marker = "platform_machine != 'aarch64' and sys_platform == 'linux'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3a/e1/5b9089a4b2a4790dfdea8b3a006052cfecff58139d5a4e34cb1a51df8d6f/nvidia_cusolver_cu12-11.6.1.9-py3-none-manylinux2014_x86_64.whl", hash = "sha256:19e33fa442bcfd085b3086c4ebf7e8debc07cfe01e11513cc6d332fd918ac260", size = 127936057 },
@@ -2735,7 +2780,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.3.1.170"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "platform_machine != 'aarch64' and sys_platform == 'linux'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/db/f7/97a9ea26ed4bbbfc2d470994b8b4f338ef663be97b8f677519ac195e113d/nvidia_cusparse_cu12-12.3.1.170-py3-none-manylinux2014_x86_64.whl", hash = "sha256:ea4f11a2904e2a8dc4b1833cc1b5181cde564edd0d5cd33e3c168eff2d1863f1", size = 207454763 },
@@ -3021,51 +3066,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e5/fb/a7960e838bc5df57a2ce23183bfd2290d97c33028b96bde332a9057834d3/pillow-11.1.0-cp313-cp313t-win32.whl", hash = "sha256:dda60aa465b861324e65a78c9f5cf0f4bc713e4309f83bc387be158b077963d9", size = 2295494 },
     { url = "https://files.pythonhosted.org/packages/d7/6c/6ec83ee2f6f0fda8d4cf89045c6be4b0373ebfc363ba8538f8c999f63fcd/pillow-11.1.0-cp313-cp313t-win_amd64.whl", hash = "sha256:ad5db5781c774ab9a9b2c4302bbf0c1014960a0a7be63278d13ae6fdf88126fe", size = 2631595 },
     { url = "https://files.pythonhosted.org/packages/cf/6c/41c21c6c8af92b9fea313aa47c75de49e2f9a467964ee33eb0135d47eb64/pillow-11.1.0-cp313-cp313t-win_arm64.whl", hash = "sha256:67cd427c68926108778a9005f2a04adbd5e67c442ed21d95389fe1d595458756", size = 2377651 },
-]
-
-[[package]]
-name = "planning-extract"
-version = "0.1.0"
-source = { git = "https://github.com/i-dot-ai/planning-extract/?branch=dev-georeference#b1130c390e140aae730ea83fd61e264bed5f85f4" }
-dependencies = [
-    { name = "aiofiles" },
-    { name = "aiohttp" },
-    { name = "anthropic" },
-    { name = "folium" },
-    { name = "google-genai" },
-    { name = "google-generativeai" },
-    { name = "groundingdino-py" },
-    { name = "instructor", extra = ["google-generativeai", "vertexai"] },
-    { name = "isort" },
-    { name = "jsonref" },
-    { name = "kaleido" },
-    { name = "lightning" },
-    { name = "mapclassify" },
-    { name = "matplotlib" },
-    { name = "numpy" },
-    { name = "numpydantic" },
-    { name = "open3d" },
-    { name = "opencv-python" },
-    { name = "osmnx" },
-    { name = "pandas" },
-    { name = "pdf2image" },
-    { name = "plotly" },
-    { name = "pre-commit" },
-    { name = "pydantic" },
-    { name = "pypdf" },
-    { name = "pyproj" },
-    { name = "pyqt6" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "python-dotenv" },
-    { name = "scikit-learn" },
-    { name = "segment-geospatial" },
-    { name = "setuptools" },
-    { name = "shapely" },
-    { name = "streamlit" },
-    { name = "streamlit-folium" },
-    { name = "streamlit-pdf-viewer" },
-    { name = "wheel" },
 ]
 
 [[package]]
@@ -4093,6 +4093,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "addict" },
+    { name = "extract" },
     { name = "gdown" },
     { name = "google-cloud-storage" },
     { name = "igraph" },
@@ -4103,7 +4104,6 @@ dependencies = [
     { name = "networkx" },
     { name = "numpy" },
     { name = "opencv-python" },
-    { name = "planning-extract" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "rtree" },
@@ -4127,6 +4127,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "addict", specifier = ">=2.4.0" },
+    { name = "extract", git = "https://github.com/i-dot-ai/planning-extract/?branch=dev-georeference" },
     { name = "gdown", specifier = ">=5.2.0" },
     { name = "google-cloud-storage", specifier = "<3.0.0" },
     { name = "igraph", specifier = ">=0.11.8" },
@@ -4137,7 +4138,6 @@ requires-dist = [
     { name = "networkx", specifier = ">=3.1" },
     { name = "numpy", specifier = ">=1.24.4" },
     { name = "opencv-python", specifier = ">=4.11.0.86" },
-    { name = "planning-extract", git = "https://github.com/i-dot-ai/planning-extract/?branch=dev-georeference" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rtree", specifier = ">=1.3.0" },
