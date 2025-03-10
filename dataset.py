@@ -315,6 +315,7 @@ class SatMapDataset(Dataset):
         keypoint_mask_pattern = f'{dataset_dir}/{{}}/keypoints.png'
         road_mask_pattern = f'{dataset_dir}/{{}}/road_mask.png'
         gt_graph_pattern = f'{dataset_dir}/{{}}/graph.json'
+        metadata_pattern = f'{dataset_dir}/{{}}/metadata.json'  # Pattern for metadata files
         coord_transform = None
         
         # Get data split or generate one if it doesn't exist
@@ -346,12 +347,15 @@ class SatMapDataset(Dataset):
         # Keep track of which index corresponds to which tile
         self.idx_to_tile = {}
         processed_tile_count = 0
+        # Dictionary to store metadata for each tile
+        self.tile_metadata = {}
 
         for tile_idx in tile_indices:
             # print(f'loading tile {tile_idx}')
             rgb_path = rgb_pattern.format(tile_idx)
             road_mask_path = road_mask_pattern.format(tile_idx)
             keypoint_mask_path = keypoint_mask_pattern.format(tile_idx)
+            metadata_path = metadata_pattern.format(tile_idx)
             
     
             try:
@@ -370,6 +374,14 @@ class SatMapDataset(Dataset):
                 self.keypoint_masks.append(cv2.imread(keypoint_mask_path, cv2.IMREAD_GRAYSCALE))
                 graph_label_generator = GraphLabelGenerator(config, gt_graph_adj, coord_transform)
                 self.graph_label_generators.append(graph_label_generator)
+                
+                # Load metadata if it exists
+                try:
+                    with open(metadata_path, 'r') as mf:
+                        self.tile_metadata[processed_tile_count] = json.load(mf)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    print(f'===== warning: no valid metadata for tile {tile_idx} =====')
+                    self.tile_metadata[processed_tile_count] = {}
                 
                 # Store mapping from processed index to tile_idx
                 self.idx_to_tile[processed_tile_count] = tile_idx
@@ -490,6 +502,9 @@ class SatMapDataset(Dataset):
         if self.is_composite and tile_idx is not None:
             tile_class = self.get_tile_class(tile_idx)
         
+        # Get metadata for this tile
+        metadata = self.tile_metadata.get(img_idx, {})
+        
         # Crop patch imgs and masks
         rgb_patch = self.rgbs[img_idx][begin_y:end_y, begin_x:end_x, :]
         keypoint_mask_patch = self.keypoint_masks[img_idx][begin_y:end_y, begin_x:end_x]
@@ -524,6 +539,7 @@ class SatMapDataset(Dataset):
             'connected': torch.tensor(connected, dtype=torch.bool),
             'valid': torch.tensor(valid, dtype=torch.bool),
             'tile_class': tile_class,
+            'metadata': metadata,
         }
 
 
