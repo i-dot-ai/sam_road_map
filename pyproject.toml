@@ -17,6 +17,7 @@ dependencies = [
     "networkx>=3.1",
     "numpy>=1.24.4",
     "opencv-python>=4.11.0.86",
+    "pandas>=2.0.0",
     "python-dotenv>=1.0.1",
     "pyyaml>=6.0.2",
     "rtree>=1.3.0",
@@ -29,12 +30,13 @@ dependencies = [
     "torch>=2.5.1",
     "torchmetrics>=1.5.2",
     "torchvision>=0.20.1",
+    "tqdm>=4.66.0",
     "wandb>=0.19.6",
 ]
 
 [tool.uv.sources]
 segment-anything = { git = "https://github.com/facebookresearch/segment-anything.git" }
-extract = { git = "https://github.com/i-dot-ai/planning-extract/", branch = "dev-georeference" }
+extract = { git = "https://github.com/i-dot-ai/planning-extract/", branch = "feature/sam-tests" }
 
 [dependency-groups]
 dev = [

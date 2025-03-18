@@ -1,3 +1,4 @@
+import random
 import numpy as np
 import torch
 from torch.utils.data import Dataset
@@ -273,10 +274,22 @@ def graph_collate_fn(batch):
 
 
 class SatMapDataset(Dataset):
-    def __init__(self, config, is_train, dev_run=False, return_graph=True):
+    def __init__(self, config, is_train, dev_run=False, return_graph=True, return_metadata=False):
+        """Main dataset type for the extract project
+
+        Args:
+            config (_type_): should be loaded from the model config yaml file
+            is_train (bool): if True, the dataset will be used for training, otherwise it will be used for validation or testing
+            dev_run (bool, optional): if True, the dataset will be reduced to 4 tiles for debugging. Defaults to False.
+            return_graph (bool, optional): turning off the graph data will speed up the dataloader
+            return_metadata (bool, optional): Good for tests
+
+        Raises:
+            ValueError: _description_
+        """        
         self.config = config
         self.return_graph = return_graph
-        
+        self.return_metadata = return_metadata
         assert self.config.DATASET in {'os'}
         
         
@@ -381,13 +394,17 @@ class SatMapDataset(Dataset):
                     self.graph_label_generators.append(graph_label_generator)
                 
                 # Load metadata if it exists
-                try:
-                    with open(metadata_path, 'r') as mf:
-                        self.tile_metadata[processed_tile_count] = json.load(mf)
-                except (FileNotFoundError, json.JSONDecodeError):
-                    print(f'===== warning: no valid metadata for tile {tile_idx} =====')
-                    self.tile_metadata[processed_tile_count] = {}
-                
+                if self.return_metadata:
+                    try:
+                        with open(metadata_path, 'r') as mf:
+                            tile_metadata = json.load(mf)
+                            tile_metadata = self.add_offset_center(tile_metadata)
+                            self.tile_metadata[processed_tile_count] = tile_metadata
+                            
+                    except (FileNotFoundError, json.JSONDecodeError):
+                        print(f'===== warning: no valid metadata for tile {tile_idx} =====')
+                        self.tile_metadata[processed_tile_count] = {}
+                    
                 # Store mapping from processed index to tile_idx
                 self.idx_to_tile[processed_tile_count] = tile_idx
                 processed_tile_count += 1
@@ -424,6 +441,64 @@ class SatMapDataset(Dataset):
                 self.eval_patches += get_patch_info_one_img(
                     i, self.IMAGE_SIZE, self.SAMPLE_MARGIN, self.config.PATCH_SIZE, eval_patches_per_edge
                 )
+            
+    def add_offset_center(self,metadata, offset_distance_meters=None, direction_degrees=None):
+        """
+        Add offset center coordinates to a data object's metadata. Used for testing
+        
+        Args:
+            data_obj: The object from the dataloader
+            offset_distance_meters: Distance to offset in meters
+            direction_degrees: Direction in degrees (0=North, 90=East, 180=South, 270=West)
+        
+        Returns:
+            The updated data object with 'offset_center' in its metadata
+        """
+
+        
+        # Extract the original center coordinates from metadata
+        original_center = metadata.get('center', None)
+        
+        if not original_center:
+            raise ValueError("No center coordinates found in metadata")
+        
+        # Extract latitude and longitude
+        lat, lon = original_center['lat'], original_center['lon']
+        
+        
+        if offset_distance_meters is None:
+            offset_distance_meters = max(5,np.random.normal(loc=20,scale=10))
+        if direction_degrees is None:
+            direction_degrees = np.random.uniform(0, 360)
+        
+        # Convert direction to radians
+        direction_radians = math.radians(direction_degrees)
+        
+        # Calculate offsets
+        # For latitude: 1 degree = approximately 111,111 meters
+        # For longitude: 1 degree = approximately 111,111 * cos(latitude) meters
+        lat_offset_meters = offset_distance_meters * math.cos(direction_radians)
+        lon_offset_meters = offset_distance_meters * math.sin(direction_radians)
+        
+        # Convert meters to degrees
+        lat_offset_degrees = lat_offset_meters / 111111 
+        lon_offset_degrees = lon_offset_meters / (111111 * math.cos(math.radians(lat)))
+        
+        # Calculate new coordinates
+        new_lat = lat + lat_offset_degrees
+        new_lon = lon + lon_offset_degrees
+        
+        # Update metadata with new offset center
+        metadata['offset'] = {
+            'lat': new_lat,
+            'lon': new_lon,
+            'lat_offset': lat_offset_degrees,
+            'lon_offset': lon_offset_degrees,
+            'distance': offset_distance_meters,
+            'direction': direction_degrees,
+        }
+        
+        return metadata
         
     def get_tile_class(self, tile_idx):
         """Return the class/source dataset of the given tile.
