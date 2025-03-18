@@ -124,6 +124,7 @@ def evaluate_georeferencer(config, output_dir, zoom=16, num_samples=None, debug_
     # Initialize dataset
     logger.info("Initializing dataset...")
     val_ds = SatMapDataset(config, is_train=False, return_graph=False, return_metadata=True)
+    logger.info(f"Dataset length: {len(val_ds)}")
     
     # Initialize georeferencer
     logger.info("Initializing georeferencer...")
@@ -355,7 +356,7 @@ def main():
                         help="Path to the configuration file")
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Directory to save output files (default: georef_eval_TIMESTAMP)")
-    parser.add_argument("--num_samples", type=int, default=10,
+    parser.add_argument("--num_samples", type=int, default=None,
                         help="Number of samples to process (default: all)")
     parser.add_argument("--zoom", type=int, default=16,
                         help="Zoom level for georeferencing (default: 16)")
