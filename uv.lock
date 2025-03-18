@@ -753,7 +753,7 @@ wheels = [
 [[package]]
 name = "extract"
 version = "0.1.0"
-source = { git = "https://github.com/i-dot-ai/planning-extract/?branch=feature%2Fsam-tests#7a487474d0bd0657a38e291f8c1626e2182ad0c4" }
+source = { git = "https://github.com/i-dot-ai/planning-extract/?branch=feature%2Fsam-tests#858ca6ba3609f0cef5c5d209a4fc9aa0fea3585c" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
