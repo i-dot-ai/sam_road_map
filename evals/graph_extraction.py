@@ -1,23 +1,20 @@
-import numpy as np
-import torch
-from torch.utils.data import Dataset
 import cv2
-import math
-import tcod
-from sklearn.neighbors import KDTree
-from skimage.draw import line
 import networkx as nx
-from graph_utils import nms_points
+import numpy as np
+import tcod
+from skimage.draw import line
+from sklearn.neighbors import KDTree
 
+from evals.graph_utils import nms_points
 
 IMAGE_SIZE = 2048
 SAMPLE_MARGIN = 64
+
 
 def read_rgb_img(path):
     bgr = cv2.imread(path)
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     return rgb
-
 
 
 # returns (x, y)
@@ -40,7 +37,7 @@ def draw_points_on_image(image, points, radius):
     Returns:
     - A square image with the given points drawn as filled circles.
     """
-    
+
     # Iterate through the list of points
     for point in points:
         cv2.circle(image, point, radius, (0, 255, 0), -1)
@@ -60,7 +57,7 @@ def draw_points_on_grayscale_image(image, points, radius):
     Returns:
     - A square image with the given points drawn as filled circles.
     """
-    
+
     # Iterate through the list of points
     for point in points:
         cv2.circle(image, point, radius, 255, -1)
@@ -76,7 +73,7 @@ def is_connected_bresenham(cost, start, end):
     kp_block_radius = 4
     cv2.circle(cost, start, kp_block_radius, 0, -1)
     cv2.circle(cost, end, kp_block_radius, 0, -1)
-    
+
     # mean_cost = np.mean(cost[rr, cc])
     max_cost = np.max(cost[rr, cc])
 
@@ -94,7 +91,7 @@ def is_connected_astar(pathfinder, cost, start, end, max_path_len):
     kp_block_radius = 6
     cv2.circle(cost, start, kp_block_radius, 1, -1)
     cv2.circle(cost, end, kp_block_radius, 1, -1)
-    
+
     path = pathfinder.get_path(r0, c0, r1, c1)
     connected = (len(path) != 0) and (len(path) < max_path_len)
 
@@ -113,6 +110,7 @@ def create_cost_field(sample_pts, road_mask):
     cost_field = np.maximum(cost_field, 255 - road_mask)
     return cost_field
 
+
 def create_cost_field_astar(sample_pts, road_mask, block_threshold=200):
     # road mask shall be uint8 normalized to 0-255
     # for tcod, 0 is blocked
@@ -128,13 +126,19 @@ def create_cost_field_astar(sample_pts, road_mask, block_threshold=200):
 
 
 def extract_graph_points(keypoint_mask, road_mask, config):
-    kp_candidates, kp_scores = get_points_and_scores_from_mask(keypoint_mask, config.ITSC_THRESHOLD * 255)
+    kp_candidates, kp_scores = get_points_and_scores_from_mask(
+        keypoint_mask, config.ITSC_THRESHOLD * 255
+    )
     kps_0 = nms_points(kp_candidates, kp_scores, config.ITSC_NMS_RADIUS)
-    kp_candidates, kp_scores = get_points_and_scores_from_mask(road_mask, config.ROAD_THRESHOLD * 255)
+    kp_candidates, kp_scores = get_points_and_scores_from_mask(
+        road_mask, config.ROAD_THRESHOLD * 255
+    )
     kps_1 = nms_points(kp_candidates, kp_scores, config.ROAD_NMS_RADIUS)
     # prioritize intersection points
     kp_candidates = np.concatenate([kps_0, kps_1], axis=0)
-    kp_scores = np.concatenate([np.ones((kps_0.shape[0])), np.zeros((kps_1.shape[0]))], axis=0)
+    kp_scores = np.concatenate(
+        [np.ones((kps_0.shape[0])), np.zeros((kps_1.shape[0]))], axis=0
+    )
     kps = nms_points(kp_candidates, kp_scores, config.ROAD_NMS_RADIUS)
     return kps
 
@@ -154,19 +158,24 @@ def extract_graph_astar(keypoint_mask, road_mask, config):
     checked = set()
     for p in kps:
         # TODO: add radius to config
-        neighbor_indices = tree.query_radius(p[np.newaxis, :], r=config.NEIGHBOR_RADIUS)[0]
+        neighbor_indices = tree.query_radius(
+            p[np.newaxis, :], r=config.NEIGHBOR_RADIUS
+        )[0]
         for n_idx in neighbor_indices:
             n = kps[n_idx]
             start, end = (int(p[0]), int(p[1])), (int(n[0]), int(n[1]))
             if (start, end) in checked:
                 continue
             # if is_connected_bresenham(cost_field, p, n):
-            if is_connected_astar(pathfinder, cost_field, p, n, max_path_len=config.NEIGHBOR_RADIUS):
+            if is_connected_astar(
+                pathfinder, cost_field, p, n, max_path_len=config.NEIGHBOR_RADIUS
+            ):
                 graph.add_edge(start, end)
             checked.add((start, end))
     return graph
 
-# takes xys    
+
+# takes xys
 def visualize_image_and_graph(img, graph):
     # Draw nodes as green squares
     for node in graph.nodes():
@@ -184,10 +193,9 @@ def visualize_image_and_graph(img, graph):
             1,
         )
     return img
-    
 
-if __name__ == '__main__':
 
+if __name__ == "__main__":
     # cost = np.array(
     #     [[1, 0, 1],
     #      [0, 1, 0],
@@ -201,15 +209,17 @@ if __name__ == '__main__':
     # cost[1, 1] = 1
     # print(pathfinder.get_path(0, 2, 0, 0))
 
-    rgb_pattern = './cityscale/20cities/region_{}_sat.png'
-    keypoint_mask_pattern = './cityscale/processed/keypoint_mask_{}.png'
-    road_mask_pattern = './cityscale/processed/road_mask_{}.png'
+    rgb_pattern = "./cityscale/20cities/region_{}_sat.png"
+    keypoint_mask_pattern = "./cityscale/processed/keypoint_mask_{}.png"
+    road_mask_pattern = "./cityscale/processed/road_mask_{}.png"
 
     index = 0
     rgb = read_rgb_img(rgb_pattern.format(index))
     road_mask = cv2.imread(road_mask_pattern.format(index), cv2.IMREAD_GRAYSCALE)
-    keypoint_mask = cv2.imread(keypoint_mask_pattern.format(index), cv2.IMREAD_GRAYSCALE)
+    keypoint_mask = cv2.imread(
+        keypoint_mask_pattern.format(index), cv2.IMREAD_GRAYSCALE
+    )
 
     graph = extract_graph_astar(keypoint_mask, road_mask)
     viz = visualize_image_and_graph(rgb, graph)
-    cv2.imwrite('test_graph_astar_blk6_r40_m40_inms.png', viz)
+    cv2.imwrite("test_graph_astar_blk6_r40_m40_inms.png", viz)

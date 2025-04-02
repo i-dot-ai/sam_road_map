@@ -1,45 +1,36 @@
 from argparse import ArgumentParser
-import numpy as np
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
-
-from utils import load_config
-from dataset import SatMapDataset, graph_collate_fn
-from model import SAMRoad
-
-import wandb
 
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import ModelCheckpoint
-from pytorch_lightning.loggers import WandbLogger
-from lightning.pytorch.callbacks import LearningRateMonitor
+import torch
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
+from torch.utils.data import DataLoader
 
+from training.dataset import SatMapDataset, graph_collate_fn
+from training.model import SAMRoad
+from utils import load_config
 
 parser = ArgumentParser()
 parser.add_argument(
     "--config",
-    default='config/toponet_vitb_256_os.yaml',
+    default="config/toponet_vitb_256_os.yaml",
     help="config file (.yml) containing the hyper-parameters for training. "
     "If None, use the nnU-Net config. See /config for examples.",
 )
 parser.add_argument(
-    "--checkpoint", default='output/os_composite_bw_color_new_dataset_09_1142_20250309_114245/epoch=99-step=6000.ckpt', help="checkpoint of the model to test."
+    "--checkpoint",
+    default="output/os_composite_bw_color_new_dataset_09_1142_20250309_114245/epoch=99-step=6000.ckpt",
+    help="checkpoint of the model to test.",
 )
-parser.add_argument(
-    "--precision", default=16, help="32 or 16"
-)
+parser.add_argument("--precision", default=16, help="32 or 16")
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
     config = load_config(args.config)
 
-    
     # Good when model architecture/input shape are fixed.
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.enabled = True
-    
 
     net = SAMRoad(config)
 
@@ -55,7 +46,7 @@ if __name__ == "__main__":
     )
 
     checkpoint_callback = ModelCheckpoint(every_n_epochs=1, save_top_k=-1)
-    lr_monitor = LearningRateMonitor(logging_interval='step')
+    lr_monitor = LearningRateMonitor(logging_interval="step")
 
     trainer = pl.Trainer(
         max_epochs=config.TRAIN_EPOCHS,
@@ -65,6 +56,6 @@ if __name__ == "__main__":
         # strategy='ddp_find_unused_parameters_true',
         precision=args.precision,
         # profiler=profiler
-        )
+    )
 
     trainer.test(net, dataloaders=val_loader, ckpt_path=args.checkpoint)

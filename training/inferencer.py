@@ -1,36 +1,35 @@
-import numpy as np
-import os
-import imageio
-import torch
-import cv2
 import json
-
-from utils import load_config, create_output_dir_and_save_config
-from dataset import read_rgb_img, get_patch_info_one_img
-from dataset import os_data_partition
-from model import SAMRoad
-import graph_extraction
-import graph_utils
-import triage
-# from triage import visualize_image_and_graph, rasterize_graph
-import pickle
-import scipy
-import rtree
-from collections import defaultdict
+import os
 import time
-
 from argparse import ArgumentParser
+from collections import defaultdict
 
+import cv2
+import numpy as np
+import rtree
+import scipy
+import torch
+
+import evals.graph_extraction as graph_extraction
+import evals.graph_utils as graph_utils
+import evals.triage as triage
+from training.dataset import get_patch_info_one_img, os_data_partition, read_rgb_img
+from training.model import SAMRoad
+from utils import create_output_dir_and_save_config, load_config
 
 parser = ArgumentParser()
 parser.add_argument(
-    "--checkpoint", default='lightning_logs/London_sparse_lond/checkpoints/epoch=49-step=5950.ckpt', help="checkpoint of the model to test."
+    "--checkpoint",
+    default="lightning_logs/London_sparse_lond/checkpoints/epoch=49-step=5950.ckpt",
+    help="checkpoint of the model to test.",
 )
 parser.add_argument(
-    "--config", default='config/toponet_vitb_256_os.yaml', help="model config."
+    "--config", default="config/toponet_vitb_256_os.yaml", help="model config."
 )
 parser.add_argument(
-    "--output_dir", default=None, help="Name of the output dir, if not specified will use timestamp"
+    "--output_dir",
+    default=None,
+    help="Name of the output dir, if not specified will use timestamp",
 )
 parser.add_argument("--device", default="cuda", help="device to use for training")
 args = parser.parse_args()
@@ -43,7 +42,6 @@ def get_img_paths(root_dir, image_indices):
         img_paths.append(os.path.join(root_dir, f"region_{ind}_sat.png"))
 
     return img_paths
-
 
 
 def crop_img_patch(img, x0, y0, x1, y1):
@@ -66,7 +64,12 @@ def infer_one_img(net, img, config):
     batch_size = config.INFER_BATCH_SIZE
     # list of (i, (x_begin, y_begin), (x_end, y_end))
     all_patch_info = get_patch_info_one_img(
-        0, image_size, config.SAMPLE_MARGIN, config.PATCH_SIZE, config.INFER_PATCHES_PER_EDGE)
+        0,
+        image_size,
+        config.SAMPLE_MARGIN,
+        config.PATCH_SIZE,
+        config.INFER_PATCHES_PER_EDGE,
+    )
     patch_num = len(all_patch_info)
     batch_num = (
         patch_num // batch_size
@@ -74,15 +77,19 @@ def infer_one_img(net, img, config):
         else patch_num // batch_size + 1
     )
 
-    
-
     # [IMG_H, IMG_W]
-    fused_keypoint_mask = torch.zeros(img.shape[0:2], dtype=torch.float32).to(args.device, non_blocking=False)
-    fused_road_mask = torch.zeros(img.shape[0:2], dtype=torch.float32).to(args.device, non_blocking=False)
-    pixel_counter = torch.zeros(img.shape[0:2], dtype=torch.float32).to(args.device, non_blocking=False)
+    fused_keypoint_mask = torch.zeros(img.shape[0:2], dtype=torch.float32).to(
+        args.device, non_blocking=False
+    )
+    fused_road_mask = torch.zeros(img.shape[0:2], dtype=torch.float32).to(
+        args.device, non_blocking=False
+    )
+    pixel_counter = torch.zeros(img.shape[0:2], dtype=torch.float32).to(
+        args.device, non_blocking=False
+    )
 
     # stores img embeddings for toponet
-    # list of [B, D, h, w], len=batch_num
+    # list of [B, D, h, w], len=batch_num
     img_features = list()
 
     for batch_index in range(batch_num):
@@ -94,16 +101,23 @@ def infer_one_img(net, img, config):
         with torch.no_grad():
             batch_img_patches = batch_img_patches.to(args.device, non_blocking=False)
             # [B, H, W, 2]
-            mask_scores, patch_img_features = net.infer_masks_and_img_features(batch_img_patches)
+            mask_scores, patch_img_features = net.infer_masks_and_img_features(
+                batch_img_patches
+            )
             img_features.append(patch_img_features)
         # Aggregate masks
         for patch_index, patch_info in enumerate(batch_patch_info):
             _, (x0, y0), (x1, y1) = patch_info
-            keypoint_patch, road_patch = mask_scores[patch_index, :, :, 0], mask_scores[patch_index, :, :, 1]
+            keypoint_patch, road_patch = (
+                mask_scores[patch_index, :, :, 0],
+                mask_scores[patch_index, :, :, 1],
+            )
             fused_keypoint_mask[y0:y1, x0:x1] += keypoint_patch
             fused_road_mask[y0:y1, x0:x1] += road_patch
-            pixel_counter[y0:y1, x0:x1] += torch.ones(road_patch.shape[0:2], dtype=torch.float32, device=args.device)
-    
+            pixel_counter[y0:y1, x0:x1] += torch.ones(
+                road_patch.shape[0:2], dtype=torch.float32, device=args.device
+            )
+
     fused_keypoint_mask /= pixel_counter
     fused_road_mask /= pixel_counter
     # range 0-1 -> 0-255
@@ -116,12 +130,18 @@ def infer_one_img(net, img, config):
     # pred_nodes, pred_edges = graph_utils.convert_from_nx(pred_graph)
     # return pred_nodes, pred_edges, fused_keypoint_mask, fused_road_mask
     # ## Astar graph extraction
-    
-    
+
     ## Extract sample points from masks
-    graph_points = graph_extraction.extract_graph_points(fused_keypoint_mask, fused_road_mask, config)
+    graph_points = graph_extraction.extract_graph_points(
+        fused_keypoint_mask, fused_road_mask, config
+    )
     if graph_points.shape[0] == 0:
-        return graph_points, np.zeros((0, 2), dtype=np.int32), fused_keypoint_mask, fused_road_mask
+        return (
+            graph_points,
+            np.zeros((0, 2), dtype=np.int32),
+            fused_keypoint_mask,
+            fused_road_mask,
+        )
 
     # for box query
     graph_rtree = rtree.index.Index()
@@ -129,7 +149,7 @@ def infer_one_img(net, img, config):
         x, y = v
         # hack to insert single points
         graph_rtree.insert(i, (x, y, x, y))
-    
+
     ## Pass 2: infer toponet to predict topology of points from stored img features
     edge_scores = defaultdict(float)
     edge_counts = defaultdict(float)
@@ -138,84 +158,106 @@ def infer_one_img(net, img, config):
         batch_patch_info = all_patch_info[offset : offset + batch_size]
 
         topo_data = {
-            'points': [],
-            'pairs': [],
-            'valid': [],
+            "points": [],
+            "pairs": [],
+            "valid": [],
         }
         idx_maps = []
-
 
         # prepares pairs queries
         for patch_info in batch_patch_info:
             _, (x0, y0), (x1, y1) = patch_info
             patch_point_indices = list(graph_rtree.intersection((x0, y0, x1, y1)))
-            idx_patch2all = {patch_idx : all_idx for patch_idx, all_idx in enumerate(patch_point_indices)}
+            idx_patch2all = {
+                patch_idx: all_idx
+                for patch_idx, all_idx in enumerate(patch_point_indices)
+            }
             patch_point_num = len(patch_point_indices)
             # normalize into patch
-            patch_points = graph_points[patch_point_indices, :] - np.array([[x0, y0]], dtype=graph_points.dtype)
+            patch_points = graph_points[patch_point_indices, :] - np.array(
+                [[x0, y0]], dtype=graph_points.dtype
+            )
             # for knn and circle query
             patch_kdtree = scipy.spatial.KDTree(patch_points)
 
             # k+1 because the nearest one is always self
             # idx is to the patch subgraph
-            knn_d, knn_idx = patch_kdtree.query(patch_points, k=config.MAX_NEIGHBOR_QUERIES + 1, distance_upper_bound=config.NEIGHBOR_RADIUS)
+            knn_d, knn_idx = patch_kdtree.query(
+                patch_points,
+                k=config.MAX_NEIGHBOR_QUERIES + 1,
+                distance_upper_bound=config.NEIGHBOR_RADIUS,
+            )
             # [patch_point_num, n_nbr]
             knn_idx = knn_idx[:, 1:]  # removes self
             # [patch_point_num, n_nbr] idx is to the patch subgraph
             src_idx = np.tile(
                 np.arange(patch_point_num)[:, np.newaxis],
-                (1, config.MAX_NEIGHBOR_QUERIES)
+                (1, config.MAX_NEIGHBOR_QUERIES),
             )
             valid = knn_idx < patch_point_num
             tgt_idx = np.where(valid, knn_idx, src_idx)
             # [patch_point_num, n_nbr, 2]
             pairs = np.stack([src_idx, tgt_idx], axis=-1)
 
-            topo_data['points'].append(patch_points)
-            topo_data['pairs'].append(pairs)
-            topo_data['valid'].append(valid)
+            topo_data["points"].append(patch_points)
+            topo_data["pairs"].append(pairs)
+            topo_data["valid"].append(valid)
             idx_maps.append(idx_patch2all)
-        
+
         # collate
         collated = {}
         for key, x_list in topo_data.items():
             length = max([x.shape[0] for x in x_list])
-            collated[key] = np.stack([
-                np.pad(x, [(0, length - x.shape[0])] + [(0, 0)] * (len(x.shape) - 1))
-                for x in x_list
-            ], axis=0)
+            collated[key] = np.stack(
+                [
+                    np.pad(
+                        x, [(0, length - x.shape[0])] + [(0, 0)] * (len(x.shape) - 1)
+                    )
+                    for x in x_list
+                ],
+                axis=0,
+            )
 
         # skips this batch if there's no points
-        if collated['points'].shape[1] == 0:
+        if collated["points"].shape[1] == 0:
             continue
-        
+
         # infer toponet
         # [B, D, h, w]
         batch_features = img_features[batch_index]
         # [B, N_sample, N_pair, 2]
-        batch_points = torch.tensor(collated['points'], device=args.device)
-        batch_pairs = torch.tensor(collated['pairs'], device=args.device)
-        batch_valid = torch.tensor(collated['valid'], device=args.device)
-
+        batch_points = torch.tensor(collated["points"], device=args.device)
+        batch_pairs = torch.tensor(collated["pairs"], device=args.device)
+        batch_valid = torch.tensor(collated["valid"], device=args.device)
 
         with torch.no_grad():
             # [B, N_samples, N_pairs, 1]
-            topo_scores = net.infer_toponet(batch_features, batch_points, batch_pairs, batch_valid)
-                
+            topo_scores = net.infer_toponet(
+                batch_features, batch_points, batch_pairs, batch_valid
+            )
+
         # all-invalid (padded, no neighbors) queries returns nan scores
         # [B, N_samples, N_pairs]
-        topo_scores = torch.where(torch.isnan(topo_scores), -100.0, topo_scores).squeeze(-1).cpu().numpy()
+        topo_scores = (
+            torch.where(torch.isnan(topo_scores), -100.0, topo_scores)
+            .squeeze(-1)
+            .cpu()
+            .numpy()
+        )
 
         # aggregate edge scores
         batch_size, n_samples, n_pairs = topo_scores.shape
         for bi in range(batch_size):
             for si in range(n_samples):
                 for pi in range(n_pairs):
-                    if not collated['valid'][bi, si, pi]:
+                    if not collated["valid"][bi, si, pi]:
                         continue
                     # idx to the full graph
-                    src_idx_patch, tgt_idx_patch = collated['pairs'][bi, si, pi, :]
-                    src_idx_all, tgt_idx_all = idx_maps[bi][src_idx_patch], idx_maps[bi][tgt_idx_patch]
+                    src_idx_patch, tgt_idx_patch = collated["pairs"][bi, si, pi, :]
+                    src_idx_all, tgt_idx_all = (
+                        idx_maps[bi][src_idx_patch],
+                        idx_maps[bi][tgt_idx_patch],
+                    )
                     edge_score = topo_scores[bi, si, pi]
                     assert 0.0 <= edge_score <= 1.0
                     edge_scores[(src_idx_all, tgt_idx_all)] += edge_score
@@ -224,23 +266,19 @@ def infer_one_img(net, img, config):
     # avg edge scores and filter
     pred_edges = []
     for edge, score_sum in edge_scores.items():
-        score = score_sum / edge_counts[edge] 
+        score = score_sum / edge_counts[edge]
         if score > config.TOPO_THRESHOLD:
             pred_edges.append(edge)
     pred_edges = np.array(pred_edges).reshape(-1, 2)
     pred_nodes = graph_points[:, ::-1]  # to rc
-    
-    
 
     return pred_nodes, pred_edges, fused_keypoint_mask, fused_road_mask
-
-    
 
 
 if __name__ == "__main__":
     config = load_config(args.config)
-    config.checkpoint=args.checkpoint
-    # Builds eval model    
+    config.checkpoint = args.checkpoint
+    # Builds eval model
     device = torch.device("cuda") if args.device == "cuda" else torch.device("cpu")
     # Good when model architecture/input shape are fixed.
     torch.backends.cudnn.benchmark = True
@@ -249,37 +287,37 @@ if __name__ == "__main__":
 
     # load checkpoint
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
-    print(f'##### Loading Trained CKPT {args.checkpoint} #####')
+    print(f"##### Loading Trained CKPT {args.checkpoint} #####")
     net.load_state_dict(checkpoint["state_dict"], strict=True)
     net.eval()
     net.to(device)
-    
+
     _, _, test_img_indices = os_data_partition()
-    rgb_pattern = './os/data/{}.png'
-    gt_graph_pattern = './os/data/{}_graph.json'
-    
-    
-    output_dir_prefix = './save/infer_'
+    rgb_pattern = "./os/data/{}.png"
+    gt_graph_pattern = "./os/data/{}_graph.json"
+
+    output_dir_prefix = "./save/infer_"
     if args.output_dir:
-        output_dir = create_output_dir_and_save_config(output_dir_prefix, config, specified_dir=f'./save/{args.output_dir}')
+        output_dir = create_output_dir_and_save_config(
+            output_dir_prefix, config, specified_dir=f"./save/{args.output_dir}"
+        )
     else:
         output_dir = create_output_dir_and_save_config(output_dir_prefix, config)
-    
+
     total_inference_seconds = 0.0
 
     for img_id in test_img_indices:
-        print(f'Processing {img_id}')
+        print(f"Processing {img_id}")
         # [H, W, C] RGB
         img = read_rgb_img(rgb_pattern.format(img_id))
         start_seconds = time.time()
         # coords in (r, c)
         pred_nodes, pred_edges, itsc_mask, road_mask = infer_one_img(net, img, config)
         end_seconds = time.time()
-        total_inference_seconds += (end_seconds - start_seconds)
+        total_inference_seconds += end_seconds - start_seconds
 
         gt_graph_path = gt_graph_pattern.format(img_id)
 
-   
         gt_graph = json.load(open(gt_graph_path, "rb"))
         gt_nodes, gt_edges = graph_utils.convert_from_nx(gt_graph)
         if len(gt_nodes) == 0:
@@ -289,11 +327,11 @@ if __name__ == "__main__":
         img_size = viz_img.shape[0]
 
         # visualizes fused masks
-        mask_save_dir = os.path.join(output_dir, 'mask')
+        mask_save_dir = os.path.join(output_dir, "mask")
         if not os.path.exists(mask_save_dir):
             os.makedirs(mask_save_dir)
-        cv2.imwrite(os.path.join(mask_save_dir, f'{img_id}_road.png'), road_mask)
-        cv2.imwrite(os.path.join(mask_save_dir, f'{img_id}_itsc.png'), itsc_mask)
+        cv2.imwrite(os.path.join(mask_save_dir, f"{img_id}_road.png"), road_mask)
+        cv2.imwrite(os.path.join(mask_save_dir, f"{img_id}_itsc.png"), itsc_mask)
 
         # # Visualizes the diff between rasterized pred/gt graphs.
         # rast_pred = triage.rasterize_graph(pred_nodes / img_size, pred_edges, img_size, dilation_radius=1)
@@ -315,23 +353,26 @@ if __name__ == "__main__":
         # cv2.imwrite(os.path.join(diff_save_dir, f'{img_id}.png'), diff_img)
 
         # Visualizes merged large map
-        viz_save_dir = os.path.join(output_dir, 'viz')
+        viz_save_dir = os.path.join(output_dir, "viz")
         if not os.path.exists(viz_save_dir):
             os.makedirs(viz_save_dir)
-        viz_img = triage.visualize_image_and_graph(viz_img, pred_nodes / img_size, pred_edges, viz_img.shape[0])
-        cv2.imwrite(os.path.join(viz_save_dir, f'{img_id}.png'), viz_img)
+        viz_img = triage.visualize_image_and_graph(
+            viz_img, pred_nodes / img_size, pred_edges, viz_img.shape[0]
+        )
+        cv2.imwrite(os.path.join(viz_save_dir, f"{img_id}.png"), viz_img)
 
-
-        nx_graph=graph_utils.convert_to_nx(pred_nodes, pred_edges)
-        graph_save_dir = os.path.join(output_dir, 'graph')
+        nx_graph = graph_utils.convert_to_nx(pred_nodes, pred_edges)
+        graph_save_dir = os.path.join(output_dir, "graph")
         os.makedirs(graph_save_dir, exist_ok=True)
-        graph_save_path = os.path.join(graph_save_dir, f'{img_id}.json')
+        graph_save_path = os.path.join(graph_save_dir, f"{img_id}.json")
         graph_utils.save_nx_to_json(nx_graph, graph_save_path)
-        
-        print(f'Done for {img_id}.')
-    
+
+        print(f"Done for {img_id}.")
+
     # log inference time
-    time_txt = f'Inference completed for {args.config} in {total_inference_seconds} seconds.'
+    time_txt = (
+        f"Inference completed for {args.config} in {total_inference_seconds} seconds."
+    )
     print(time_txt)
-    with open(os.path.join(output_dir, 'inference_time.txt'), 'w') as f:
+    with open(os.path.join(output_dir, "inference_time.txt"), "w") as f:
         f.write(time_txt)

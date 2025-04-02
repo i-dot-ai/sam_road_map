@@ -1,18 +1,16 @@
-import numpy as np
-from scipy import interpolate
-from shapely.geometry import LineString
-import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap
-import networkx as nx
-from sklearn.cluster import DBSCAN
-from shapely.geometry import Point, LineString
-from shapely.strtree import STRtree
-from collections import deque
-import unittest
 import json
+import unittest
+from collections import deque
+
 import igraph as ig
+import matplotlib.pyplot as plt
+import networkx as nx
+import numpy as np
 import rtree
 import scipy
+from shapely.geometry import LineString, Point
+from shapely.strtree import STRtree
+from sklearn.cluster import DBSCAN
 
 
 def inspect_graph(node_array, edge_array):
@@ -29,7 +27,7 @@ def inspect_graph(node_array, edge_array):
     print(f"DEBUG: One-way-edge count {one_way_edge_count}")
 
     node_dist_matrix = node_array[:, np.newaxis, :] - node_array[np.newaxis, :, :]
-    node_dist_matrix = np.sum(node_dist_matrix**2, axis=-1)**0.5
+    node_dist_matrix = np.sum(node_dist_matrix**2, axis=-1) ** 0.5
     node_num = node_array.shape[0]
     pair_is_close = node_dist_matrix < 0.1
     duplicate_node_count = (np.sum(pair_is_close.astype(int)) - node_num) / 2
@@ -47,8 +45,10 @@ def filter_nodes(node_array, edge_array, keep_node):
     old_node_num = node_array.shape[0]
     keep_indices = np.where(keep_node)[0]
     new_node_num = keep_indices.shape[0]
-    old_to_new_indices = np.full((old_node_num,) , fill_value=-1, dtype=np.int32)
-    old_to_new_indices[keep_indices] = np.arange(start=0, stop=new_node_num, step=1, dtype=np.int32)
+    old_to_new_indices = np.full((old_node_num,), fill_value=-1, dtype=np.int32)
+    old_to_new_indices[keep_indices] = np.arange(
+        start=0, stop=new_node_num, step=1, dtype=np.int32
+    )
     # Replaces node indices in edge_array
     edge_nodes = edge_array.flatten()
     new_edge_nodes = old_to_new_indices[edge_nodes]
@@ -59,31 +59,11 @@ def filter_nodes(node_array, edge_array, keep_node):
     return new_nodes, new_edges
 
 
-
-def edge_list_to_adj_table(edges):
-    # edges: [[src_idx, dst_idx], ...] node indices must start from 0 and
-    # be continuous.
-    # Returns:
-    # adj_table: list of sets. len(adj_table) = num_nodes, adj_table[i] 
-    # = neighbor node indices of node i. Empty if no neighbors.
-    nodes = set()
-    for edge in edges:
-        start_idx, end_idx = edge[0], edge[1]
-        nodes.add(start_idx)
-        nodes.add(end_idx)
-    node_num = len(nodes)
-    adj_table = [set() for i in range(node_num)]
-    for edge in edges:
-        start_idx, end_idx = edge[0], edge[1]
-        adj_table[start_idx].add(end_idx)
-    return adj_table
-
-
 def edge_list_to_adj_table(nodes, edges):
     # edges: [[src_idx, dst_idx], ...] node indices must start from 0 and
     # be continuous.
     # Returns:
-    # adj_table: list of sets. len(adj_table) = num_nodes, adj_table[i] 
+    # adj_table: list of sets. len(adj_table) = num_nodes, adj_table[i]
     # = neighbor node indices of node i. Empty if no neighbors.
     node_num = len(nodes)
     adj_table = [set() for i in range(node_num)]
@@ -91,7 +71,7 @@ def edge_list_to_adj_table(nodes, edges):
         start_idx, end_idx = edge[0], edge[1]
         adj_table[start_idx].add(end_idx)
     return adj_table
-    
+
 
 def trace_segment(start_edge, adj_table):
     segment_nodes = [start_edge[0], start_edge[1]]
@@ -137,7 +117,7 @@ def find_segments_in_road_graph(adj_table):
             # Needs edge direction for correct tracing.
             segment = trace_segment((node, neighbor), adj_table)
             for i in range(len(segment) - 1):
-                visited_edge = unique_edge(segment[i], segment[i+1])
+                visited_edge = unique_edge(segment[i], segment[i + 1])
                 visited_edges.add(visited_edge)
             segments.append(segment)
 
@@ -148,7 +128,7 @@ def find_segments_in_road_graph(adj_table):
     total_edge_num = len(all_unique_edges)
     if len(visited_edges) < total_edge_num:
         diff = total_edge_num - len(visited_edges)
-        print(f'!!! Warning: Isolated loop detected. {diff} edges are missing.')
+        print(f"!!! Warning: Isolated loop detected. {diff} edges are missing.")
 
     return segments
 
@@ -163,15 +143,14 @@ def normalize_segments(coords, segments):
         segment = segments[i]
         first = coords[segment[0], :]
         last = coords[segment[-1], :]
-        
-        if first[0] > last[0] or (
-            first[0] == last[0] and first[1] > last[1]):
+
+        if first[0] > last[0] or (first[0] == last[0] and first[1] > last[1]):
             segment = segment[::-1]
-            
+
         normalized_segments.append(segment)
-        
+
     return normalized_segments
-    
+
 
 def get_resampled_polylines(coords, segments, num_points):
     # Uniformly resamples each polyline defined by segments to num_points.
@@ -179,21 +158,23 @@ def get_resampled_polylines(coords, segments, num_points):
     # segments: [list_of_segment_node_indices, ...]
     # Returns:
     # list of [num_points, 2].
-    
+
     resampled_polylines = []
-    
+
     for segment in segments:
         polyline_coords = coords[segment]
         polyline = LineString(polyline_coords)
-        
+
         # Uniform parameter values
         dists = np.linspace(0, polyline.length, num_points)
-        
+
         # Resample polyline
-        resampled_polyline = np.array([list(polyline.interpolate(d).coords)[0] for d in dists])
-        
+        resampled_polyline = np.array(
+            [list(polyline.interpolate(d).coords)[0] for d in dists]
+        )
+
         resampled_polylines.append(resampled_polyline)
-    
+
     return resampled_polylines
 
 
@@ -201,8 +182,7 @@ def get_polylines_from_road_graph(coords, edges, num_points_per_segment):
     adj_table = edge_list_to_adj_table(edges)
     segments = find_segments_in_road_graph(adj_table)
     segments = normalize_segments(coords, segments)
-    polylines = get_resampled_polylines(
-        coords, segments, num_points_per_segment)
+    polylines = get_resampled_polylines(coords, segments, num_points_per_segment)
     return polylines
 
 
@@ -220,11 +200,14 @@ def get_polyline_connectivity(polylines, dist_threhsold):
     connected_point_indices = []
     polyline_num = len(polylines)
     for i in range(polyline_num):
-        for j in range(i+1, polyline_num):
+        for j in range(i + 1, polyline_num):
             a, b = polylines[i], polylines[j]
             endpoint_indices = [
-                (0, 0), (0, b.shape[0]-1),
-                (a.shape[0]-1, 0), (a.shape[0]-1, b.shape[0]-1)]
+                (0, 0),
+                (0, b.shape[0] - 1),
+                (a.shape[0] - 1, 0),
+                (a.shape[0] - 1, b.shape[0] - 1),
+            ]
             for a_idx, b_idx in endpoint_indices:
                 if np.linalg.norm(a[a_idx] - b[b_idx]) < dist_threhsold:
                     connected_pairs.append((i, j))
@@ -241,33 +224,36 @@ def visualize_polylines(image, polylines):
     # tuple in pixel coordinates.
 
     # Generate a color map with as many colors as there are polylines
-    cmap = plt.cm.get_cmap('hsv', len(polylines))
+    cmap = plt.cm.get_cmap("hsv", len(polylines))
 
     # Display the image
     plt.imshow(image)
-    
+
     # Draw each polyline with a different color
     for idx, polyline in enumerate(polylines):
         plt.plot(polyline[:, 1], polyline[:, 0], color=cmap(idx), linewidth=2)
-    
+
     plt.show()
 
 
 def visualize_polyline_graph(
-        image, polylines, connected_pairs, connected_point_indices):
+    image, polylines, connected_pairs, connected_point_indices
+):
     # Draws each connected pair, one by one, red->green
-    for pair_idx, (pair, endpoints) in enumerate(zip(connected_pairs, connected_point_indices)):
-        print(f'pair {pair_idx+1}/{len(connected_pairs)}')
+    for pair_idx, (pair, endpoints) in enumerate(
+        zip(connected_pairs, connected_point_indices)
+    ):
+        print(f"pair {pair_idx+1}/{len(connected_pairs)}")
         plt.imshow(image)
         idx_a, idx_b = pair
         line_a, line_b = polylines[idx_a], polylines[idx_b]
-        plt.plot(line_a[:, 1], line_a[:, 0], color='red', linewidth=2)
-        plt.plot(line_b[:, 1], line_b[:, 0], color='green', linewidth=2)
+        plt.plot(line_a[:, 1], line_a[:, 0], color="red", linewidth=2)
+        plt.plot(line_b[:, 1], line_b[:, 0], color="green", linewidth=2)
         end_a, end_b = line_a[endpoints[0], :], line_b[endpoints[1], :]
-        plt.plot(end_a[1], end_a[0], marker='o', markersize=8, color='blue')
-        plt.plot(end_b[1], end_b[0], marker='o', markersize=8, color='blue')
+        plt.plot(end_a[1], end_a[0], marker="o", markersize=8, color="blue")
+        plt.plot(end_b[1], end_b[0], marker="o", markersize=8, color="blue")
         plt.show()
-    
+
 
 ## Utils for aggregating the large map.
 def remove_isolate_nodes(nodes, edges):
@@ -275,7 +261,7 @@ def remove_isolate_nodes(nodes, edges):
     graph = nx.Graph()
     graph.add_nodes_from(node_indices)
     graph.add_edges_from(edges)
-    
+
     isolated_nodes = list(nx.isolates(graph))
     graph.remove_nodes_from(isolated_nodes)
 
@@ -294,14 +280,14 @@ def merge_nodes(nodes, edges, distance_threshold):
     node_cluster_indices = clustering.labels_
     num_clusters = len(np.unique(node_cluster_indices))
     cluster_centers = np.zeros((num_clusters, 2), dtype=np.float32)
-    cluster_size = np.zeros((num_clusters, ), dtype=np.float32)
+    cluster_size = np.zeros((num_clusters,), dtype=np.float32)
     for node_index, node in enumerate(nodes):
         cluster_index = node_cluster_indices[node_index]
         cluster_centers[cluster_index, :] += node
         cluster_size[cluster_index] += 1
     cluster_centers = cluster_centers / cluster_size[:, np.newaxis]
     unique_edges = set()
-    for (start, end) in edges:
+    for start, end in edges:
         new_start = node_cluster_indices[start]
         new_end = node_cluster_indices[end]
 
@@ -328,7 +314,9 @@ def split_edges(nodes, edges, distance_threshold):
         start, end = edge_queue.pop()
         start_pt, end_pt = nodes[start, :], nodes[end, :]
         line_segment = LineString([start_pt, end_pt])
-        nearby_region = line_segment.buffer(distance=distance_threshold, cap_style='flat')
+        nearby_region = line_segment.buffer(
+            distance=distance_threshold, cap_style="flat"
+        )
         nearby_point_indices = point_tree.query(nearby_region).tolist()
         min_dist = distance_threshold + 88.8
         nearest_point_index = None
@@ -347,13 +335,13 @@ def split_edges(nodes, edges, distance_threshold):
             e1, e2 = (start, nearest_point_index), (nearest_point_index, end)
             edge_queue.appendleft(e1)
             edge_queue.appendleft(e2)
-    
+
     # TODO(congrui): share the edge dedup logic
     unique_edges = set()
-    for (start, end) in new_edges:
+    for start, end in new_edges:
         new_edge = (min(start, end), max(start, end))
         unique_edges.add(new_edge)
-    
+
     return nodes, list(unique_edges)
 
 
@@ -372,10 +360,16 @@ def combine_graphs(graphs):
     return combined_nodes, combined_edges
 
 
-def merge_into_large_graph(nodes, edges, merge_node_dist_thresh, split_edge_dist_thresh):
+def merge_into_large_graph(
+    nodes, edges, merge_node_dist_thresh, split_edge_dist_thresh
+):
     nodes1, edges1 = remove_isolate_nodes(nodes, edges)
-    nodes2, edges2 = merge_nodes(nodes1, edges1, distance_threshold=merge_node_dist_thresh)
-    nodes3, edges3 = split_edges(nodes2, edges2, distance_threshold=split_edge_dist_thresh)
+    nodes2, edges2 = merge_nodes(
+        nodes1, edges1, distance_threshold=merge_node_dist_thresh
+    )
+    nodes3, edges3 = split_edges(
+        nodes2, edges2, distance_threshold=split_edge_dist_thresh
+    )
     nodes4, edges4 = remove_isolate_nodes(nodes3, edges3)
     return nodes4, edges4
 
@@ -392,9 +386,9 @@ def convert_to_sat2graph_format(nodes, edges):
     all_edges = np.concatenate((edges, reverse_edges), axis=0)
 
     adj_table = edge_list_to_adj_table(nodes, all_edges)
-    
+
     int_nodes = [(round(x), round(y)) for x, y in nodes]
-    
+
     result = dict()
     for node_idx, neighbor_indices in enumerate(adj_table):
         # Notice, we expect the input graph has gone through node-merging so
@@ -420,123 +414,131 @@ def convert_from_sat2graph_format(graph):
         for neighbor in neighbors:
             if neighbor not in node_to_idx.keys():
                 node_to_idx[neighbor] = len(node_to_idx)
-    
+
     edges = list()
     for node, neighbors in graph.items():
         for neighbor in neighbors:
             src_idx, dst_idx = node_to_idx[node], node_to_idx[neighbor]
             edges.append((src_idx, dst_idx))
-    
+
     num_nodes = len(node_to_idx)
     nodes = [None] * num_nodes
     for node, idx in node_to_idx.items():
         nodes[idx] = node
     return np.array(nodes), edges
 
+
 def convert_to_nx(nodes, edges):
     """
     Converts nodes and edges arrays to a NetworkX graph.
-    
+
     Args:
         nodes: [N_node, 2] array of (row, col) image coordinates
         edges: [N_edge, 2] array of (start, end) node indices
-    
+
     Returns:
         NetworkX graph with nodes having pixel_coords and geo_coords attributes
     """
     G = nx.Graph()
-    
+
     # Add nodes with attributes
     for idx, (row, col) in enumerate(nodes):
         # Convert from (row, col) back to (x, y) pixel coordinates
-        G.add_node(str(idx), 
-                  pixel_coords=[int(col), int(row)],  # Convert back to x,y format
-                  geo_coords=None)  # Initialize empty geo coords
-    
+        G.add_node(
+            str(idx),
+            pixel_coords=[int(col), int(row)],  # Convert back to x,y format
+            geo_coords=None,
+        )  # Initialize empty geo coords
+
     # Add edges using the node indices
     for start_idx, end_idx in edges:
         G.add_edge(str(start_idx), str(end_idx))
-        
+
     return G
+
 
 def convert_from_nx(graph):
     # nx graph, node being (x, y)
     # Returns:
     # nodes: [N_node, 2] of the (row, col) image coordinates.
     # edges: [N_edge, 2] pairs of (start, end) node indices.
-    graph=load_nx_from_json(graph)
+    graph = load_nx_from_json(graph)
     node_to_idx = dict()
     nodes = list()
     edges = list()
     for node in graph.nodes:
         if node not in node_to_idx.keys():
             node_to_idx[node] = len(node_to_idx)
-        x, y = map(int, graph.nodes[node]['pixel_coords'])
+        x, y = map(int, graph.nodes[node]["pixel_coords"])
         nodes.append((y, x))  # to rc
     for node_0, node_1 in graph.edges():
         edges.append((node_to_idx[node_0], node_to_idx[node_1]))
-    
+
     return np.array(nodes), np.array(edges)
 
 
 def load_nx_from_json(graph_json: dict) -> nx.Graph:
     """
     Load a JSON graph file into a NetworkX graph.
-    
+
     Args:
         filepath: Path to the JSON graph file
-        
+
     Returns:
         NetworkX graph with nodes and their attributes
     """
-    
+
     G = nx.Graph()
-    
-    for node_id, node_data in graph_json['nodes'].items():
-        G.add_node(node_id, 
-                  pixel_coords=node_data['pixel_coords'],
-                  geo_coords=node_data['geo_coords'])
-    
-    for edge in graph_json['edges']:
+
+    for node_id, node_data in graph_json["nodes"].items():
+        G.add_node(
+            node_id,
+            pixel_coords=node_data["pixel_coords"],
+            geo_coords=node_data["geo_coords"],
+        )
+
+    for edge in graph_json["edges"]:
         try:
             G.add_edge(edge[0], edge[1])
-        except:
-            G.add_edge(edge['source'], edge['target'])
+        except Exception:
+            G.add_edge(edge["source"], edge["target"])
     return G
+
 
 def save_nx_to_json(graph, filepath):
     # Saves a NetworkX graph to a JSON file.
     # graph: NetworkX graph
     # filepath: Path to the JSON file
     graph_json = nx.node_link_data(graph)
-    with open(filepath, 'w') as f:
-        json.dump(graph_json, f)    
-
-
+    with open(filepath, "w") as f:
+        json.dump(graph_json, f)
 
 
 ### igraph utils for performance
 
-def igraph_from_adj_dict(graph, coord_transform,dataset=None):
+
+def igraph_from_adj_dict(graph, coord_transform, dataset=None):
     # Edges will be de-duped
 
-    nodes,edges=convert_from_nx(graph)
+    nodes, edges = convert_from_nx(graph)
 
     n_vertices = nodes.shape[0]
     if n_vertices == 0:
         nodes = np.zeros((0, 2), dtype=nodes.dtype)
     edges = set([(min(src, tgt), max(src, tgt)) for src, tgt in edges])
     g = ig.Graph(n_vertices, list(edges))
-    g.vs['point'] = nodes
+    g.vs["point"] = nodes
     return g
 
-def get_line_bbox(line):
-    (x0, y0), (x1, y1) = line
-    l = min(x0, x1) - 1
-    b = min(y0, y1) - 1
-    r = max(x0, x1) + 1
-    t = max(y0, y1) + 1
-    return (l, b, r, t)
+
+def get_line_bbox(line_segment):
+    (start_x, start_y), (end_x, end_y) = line_segment
+    left = min(start_x, end_x) - 1
+    bottom = min(start_y, end_y) - 1
+    right = max(start_x, end_x) + 1
+    top = max(start_y, end_y) + 1
+    return (left, bottom, right, top)
+
 
 def find_intersection(segment1, segment2):
     """
@@ -557,12 +559,12 @@ def find_intersection(segment1, segment2):
     # Check for intersection
     intersection = line1.intersection(line2)
 
-    if not intersection.is_empty and intersection.geom_type == 'Point':
+    if not intersection.is_empty and intersection.geom_type == "Point":
         if not (
-            intersection.equals(Point(x1, y1)) or
-            intersection.equals(Point(x2, y2)) or
-            intersection.equals(Point(x3, y3)) or
-            intersection.equals(Point(x4, y4))
+            intersection.equals(Point(x1, y1))
+            or intersection.equals(Point(x2, y2))
+            or intersection.equals(Point(x3, y3))
+            or intersection.equals(Point(x4, y4))
         ):
             return (intersection.x, intersection.y)
     # geom_type could be line if two parallel lines overlap
@@ -570,12 +572,13 @@ def find_intersection(segment1, segment2):
     # or intersection is at endpoints
     return None
 
+
 def find_crossover_points(graph):
     # takes igraph
     # y axis shall point upwards for rtree to work properly
     # crossover points are counted twice: A cross B, B cross A
     # - which is fine for now just be aware
-    points = graph.vs['point']
+    points = graph.vs["point"]
     edges = graph.es
     lines = [(points[edge.source], points[edge.target]) for edge in edges]
     line_bboxes = [get_line_bbox(line) for line in lines]
@@ -600,18 +603,21 @@ def find_crossover_points(graph):
 
     return crossover_points
 
+
 def subdivide_graph(graph, resolution):
     # takes igraph
-    new_points = [p for p in graph.vs['point']]
+    new_points = [p for p in graph.vs["point"]]
     new_edges = []
     for edge in graph.es:
-        p0, p1 = graph.vs['point'][edge.source], graph.vs['point'][edge.target]
-        length = np.linalg.norm(p1 - p0) 
+        p0, p1 = graph.vs["point"][edge.source], graph.vs["point"][edge.target]
+        length = np.linalg.norm(p1 - p0)
         sample_pieces = max(1, int(length / resolution))
         # [N, ]
         samples = np.linspace(0.0, 1.0, sample_pieces + 1, endpoint=True)
         # [N, 2] = [1, 2] + [N, 1] @ [1, 2]
-        sampled_pts = np.expand_dims(np.array(p0), axis=0) + np.expand_dims(samples, axis=1) @ np.expand_dims(p1 - p0, axis=0)
+        sampled_pts = np.expand_dims(np.array(p0), axis=0) + np.expand_dims(
+            samples, axis=1
+        ) @ np.expand_dims(p1 - p0, axis=0)
         # [N-2, 2]
         sampled_pts = sampled_pts[1:-1, :]
         new_point_indices = []
@@ -623,9 +629,10 @@ def subdivide_graph(graph, resolution):
         new_edges += list(zip(new_edges_sources, new_edges_targets))
 
     new_graph = ig.Graph(len(new_points), new_edges)
-    new_graph.vs['point'] = np.array(new_points)
+    new_graph.vs["point"] = np.array(new_points)
     return new_graph
-        
+
+
 def nms_points(points, scores, radius, return_indices=False):
     # if score > 1.0, the point is forced to be kept regardless
     sorted_indices = np.argsort(scores)[::-1]
@@ -647,45 +654,47 @@ def nms_points(points, scores, radius, return_indices=False):
     else:
         return sorted_points[kept]
 
-    
+
 def bfs_with_conditions(graph, start_node, stop_nodes, max_depth):
     """
     Perform BFS on an igraph graph (directed or undirected) from a given start node.
     The search stops if it visits a node from a given set of stop nodes or if the depth reaches a threshold.
     The function returns the set of visited nodes, including stop nodes if encountered.
-    
+
     Args:
     - graph (ig.Graph): The graph to search.
     - start_node (int): The index of the node to start the BFS from.
     - stop_nodes (set): A set of node indices where the search will stop if visited.
     - max_depth (int): The maximum depth to search.
-    
+
     Returns:
     - set: The set of visited node indices.
     """
     visited = set()  # To keep track of visited nodes
     queue = deque()
     queue.append((start_node, 0))  # Queue of (node, depth)
-    
+
     while queue:
-        current_node, current_depth = queue.popleft()  # Dequeue the next node and its depth
-        
+        (
+            current_node,
+            current_depth,
+        ) = queue.popleft()  # Dequeue the next node and its depth
+
         # Mark node as visited
         visited.add(current_node)
-        
+
         # Check if the current node is a stop node or if the current depth exceeds max_depth
         if current_node in stop_nodes or current_depth >= max_depth:
             # Stop condition met, do not extend
-            continue  
-        
+            continue
+
         # Get neighbors and enqueue them with incremented depth, considering all edges
         neighbors = graph.neighbors(current_node, mode="all")
         for neighbor in neighbors:
             if neighbor not in visited:
                 queue.append((neighbor, current_depth + 1))
-    
-    return visited
 
+    return visited
 
 
 ##### Unit tests #####
@@ -731,14 +740,16 @@ class TestGraphUtils(unittest.TestCase):
     def test_buffer_region(self):
         start_pt, end_pt = np.array([0.0, 0.0]), np.array([10.0, 0.0])
         line_segment = LineString([start_pt, end_pt])
-        nearby_region = line_segment.buffer(distance=2.0, cap_style='flat')
+        nearby_region = line_segment.buffer(distance=2.0, cap_style="flat")
 
         # Get the vertices of the polygon as a list of tuples
         vertices_list = list(nearby_region.exterior.coords)
         # Convert the list of tuples to a NumPy array
         vertices_array = np.array(vertices_list)
 
-        gt_vertices = np.array([[10.0, 2.0], [10.0, -2.0], [0.0, -2.0], [0.0, 2.0], [10.0, 2.0]])
+        gt_vertices = np.array(
+            [[10.0, 2.0], [10.0, -2.0], [0.0, -2.0], [0.0, 2.0], [10.0, 2.0]]
+        )
         np.testing.assert_almost_equal(vertices_array, gt_vertices)
 
     def test_convert_to_sat2graph_format(self):
@@ -770,23 +781,29 @@ class TestGraphUtils(unittest.TestCase):
 
     def test_igraph_from_sat2graph_format(self):
         adj = {
-            (1, 2) : [(3, 4), (5, 6)],
-            (3, 4) : [(1, 2), (5, 6)],
+            (1, 2): [(3, 4), (5, 6)],
+            (3, 4): [(1, 2), (5, 6)],
         }
-        rc2xy = lambda x : x[:, ::-1]
+        rc2xy = lambda x: x[:, ::-1]
         g = igraph_from_adj_dict(adj, rc2xy)
         self.assertEqual(len(g.es), 3)
         self.assertEqual(len(g.vs), 3)
-        self.assertEqual(g.vs[0]['point'][0], 2)
-        self.assertEqual(g.vs[0]['point'][1], 1)
+        self.assertEqual(g.vs[0]["point"][0], 2)
+        self.assertEqual(g.vs[0]["point"][1], 1)
 
     def test_find_crossover_points(self):
         adj = {
-            (0, 1) : [(10, 1), ],
-            (2, -2) : [(2, 10), ],
-            (10, 1) : [(20, 1), ],
+            (0, 1): [
+                (10, 1),
+            ],
+            (2, -2): [
+                (2, 10),
+            ],
+            (10, 1): [
+                (20, 1),
+            ],
         }
-        rc2xy = lambda x : x[:, ::-1]
+        rc2xy = lambda x: x[:, ::-1]
         g = igraph_from_adj_dict(adj, rc2xy)
         pts = find_crossover_points(g)
         self.assertEqual(len(pts), 1)
@@ -796,19 +813,19 @@ class TestGraphUtils(unittest.TestCase):
 
     def test_subdivide_graph(self):
         adj = {
-            (0, 0) : [(10, 0), ],
-            (10, 0) : [(20, 0), ]
+            (0, 0): [
+                (10, 0),
+            ],
+            (10, 0): [
+                (20, 0),
+            ],
         }
-        rc2xy = lambda x : x[:, ::-1]
+        rc2xy = lambda x: x[:, ::-1]
         g = igraph_from_adj_dict(adj, rc2xy)
         g1 = subdivide_graph(g, resolution=2.0)
-        self.assertEqual(len(g1.vs['point']), 11)
+        self.assertEqual(len(g1.vs["point"]), 11)
         self.assertEqual(len(g1.es), 10)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
-
-
-
-

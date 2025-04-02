@@ -24,6 +24,11 @@ Initialise the uv environment:
 uv sync
 ```
 
+Pre-commit setup:
+```bash
+uvx pre-commit install
+```
+
 ### SAM Preparation
 Download the ViT-B checkpoint from the official SAM directory. Put it under:
 

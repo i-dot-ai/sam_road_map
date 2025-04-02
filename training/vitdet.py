@@ -1,17 +1,13 @@
 import sys
-sys.path.insert(0, './detectron2')
 
+sys.path.insert(0, "./detectron2")
+
+import pprint
 from functools import partial
 
-import torch.nn as nn
 import torch
-import torch.nn.functional as F
-
-
+import torch.nn as nn
 from detectron2.modeling import ViT
-import pprint
-
-
 
 # def resize_vit_pos_embed(self, state_dict, image_size, vit_patch_size, encoder_global_attn_indexes):
 #     new_state_dict = {k : v for k, v in state_dict.items()}
@@ -73,11 +69,13 @@ class VITBEncoder(nn.Module):
             out_feature="last_feat",
         )
 
-        self.output_feature_proj = nn.Conv2d(embed_dim, output_feature_dim, kernel_size=1, stride=1)
+        self.output_feature_proj = nn.Conv2d(
+            embed_dim, output_feature_dim, kernel_size=1, stride=1
+        )
 
-        with open('sam_ckpts/mae_pretrain_vit_base.pth', "rb") as f:
-            ckpt_state_dict = torch.load(f)['model']
-            ckpt_state_dict = {'vitb.' + k : v for k, v in ckpt_state_dict.items()}
+        with open("sam_ckpts/mae_pretrain_vit_base.pth", "rb") as f:
+            ckpt_state_dict = torch.load(f)["model"]
+            ckpt_state_dict = {"vitb." + k: v for k, v in ckpt_state_dict.items()}
 
             # for k, v in ckpt_state_dict.items():
             #     print(f'ckpt {k} shape {v.shape}')
@@ -105,13 +103,12 @@ class VITBEncoder(nn.Module):
             self.vitb.load_state_dict(state_dict_to_load, strict=False)
 
     def forward(self, x):
-        x = self.vitb(x)['last_feat']
-        x = self.output_feature_proj(x) 
+        x = self.vitb(x)["last_feat"]
+        x = self.output_feature_proj(x)
         return x
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     img_size = 512
     img = torch.zeros((1, 3, img_size, img_size), dtype=torch.float32)
     vitb = VITBEncoder(img_size, 256)

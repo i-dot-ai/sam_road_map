@@ -1,75 +1,70 @@
-from argparse import ArgumentParser
-import numpy as np
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
 import datetime
 import logging
 import os
-from dotenv import load_dotenv
-from utils import load_config, create_output_dir_and_save_config, upload_to_gcs_bucket
-from dataset import SatMapDataset, graph_collate_fn
-from model import SAMRoad
-from torch.utils.data import WeightedRandomSampler  # Added for class balancing
-
-import wandb
+from argparse import ArgumentParser
 
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import ModelCheckpoint
+import torch
+import wandb
+from dotenv import load_dotenv
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
-from lightning.pytorch.callbacks import LearningRateMonitor
+from torch.utils.data import WeightedRandomSampler  # Added for class balancing
+from torch.utils.data import DataLoader
 
+from training.dataset import SatMapDataset, graph_collate_fn
+from training.model import SAMRoad
+from utils import create_output_dir_and_save_config, load_config, upload_to_gcs_bucket
 
 load_dotenv()
 
 parser = ArgumentParser()
 parser.add_argument(
     "--config",
-    default='config/toponet_vitb_256_os.yaml',
+    default="config/toponet_vitb_256_os.yaml",
     help="config file (.yml) containing the hyper-parameters for training. "
     "If None, use the nnU-Net config. See /config for examples.",
 )
 parser.add_argument(
     "--resume", default=None, help="checkpoint of the last epoch of the model"
 )
+parser.add_argument("--precision", default=16, help="32 or 16")
+parser.add_argument("--fast_dev_run", default=False, action="store_true")
+parser.add_argument("--dev_run", default=False, action="store_true")
 parser.add_argument(
-    "--precision", default=16, help="32 or 16"
+    "--upload_to_gcs",
+    default=True,
+    action="store_true",
+    help="Whether to upload the output directory to GCS bucket after training",
 )
 parser.add_argument(
-    "--fast_dev_run", default=False, action='store_true'
-)
-parser.add_argument(
-    "--dev_run", default=False, action='store_true'
-)
-parser.add_argument(
-    "--upload_to_gcs", default=True, action='store_true',
-    help="Whether to upload the output directory to GCS bucket after training"
-)
-parser.add_argument(
-    "--gcs_bucket", default="extract-general",
-    help="Name of the GCS bucket to upload to"
+    "--gcs_bucket",
+    default="extract-general",
+    help="Name of the GCS bucket to upload to",
 )
 
 
 if __name__ == "__main__":
     # Configure logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
     args = parser.parse_args()
     config = load_config(args.config)
     dev_run = args.dev_run or args.fast_dev_run
 
     # Create output directory and save config
-    custom_tags = 'new_dataset'
+    custom_tags = "new_dataset"
     name = f'{config.DATASET_ID}_{custom_tags}_{datetime.datetime.now().strftime("%d_%H%M")}'
-    
+
     # Create shared directory for checkpoints, wandb logs, and config files
-    output_dir_prefix = 'output/'
+    output_dir_prefix = "output/"
     shared_dir = create_output_dir_and_save_config(
-        output_dir_prefix=f"{output_dir_prefix}/{name}", 
-        config=config
+        output_dir_prefix=f"{output_dir_prefix}/{name}", config=config
     )
-    
+
     # start a new wandb run to track this script
     wandb.init(
         # set the wandb project where this run will be logged
@@ -77,32 +72,35 @@ if __name__ == "__main__":
         # track hyperparameters and run metadata
         config=config,
         # disable wandb if debugging
-        mode='disabled' if dev_run else None,
+        mode="disabled" if dev_run else None,
         name=name,
-        dir=shared_dir  # Using the shared directory created above
+        dir=shared_dir,  # Using the shared directory created above
     )
-
 
     # Good when model architecture/input shape are fixed.
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.enabled = True
-    
 
     net = SAMRoad(config)
 
-    train_ds, val_ds = SatMapDataset(config, is_train=True, dev_run=dev_run), SatMapDataset(config, is_train=False, dev_run=dev_run)
+    train_ds, val_ds = (
+        SatMapDataset(config, is_train=True, dev_run=dev_run),
+        SatMapDataset(config, is_train=False, dev_run=dev_run),
+    )
 
     # Setup weighted random sampler for class imbalance if this is a composite dataset
-    if hasattr(train_ds, 'is_composite') and train_ds.is_composite:
+    if hasattr(train_ds, "is_composite") and train_ds.is_composite:
         logging.info("Using weighted random sampler for composite dataset")
-        
+
         # Get class distribution from dataset
         class_distribution = train_ds.get_class_distribution()
         if class_distribution:
             # Calculate class weights (inversely proportional to class frequency)
             total_samples = sum(class_distribution.values())
-            class_weights = {cls: total_samples / count for cls, count in class_distribution.items()}
-            
+            class_weights = {
+                cls: total_samples / count for cls, count in class_distribution.items()
+            }
+
             # Create sample weights array (one weight per dataset sample)
             sample_weights = []
             for i in range(len(train_ds)):
@@ -114,14 +112,14 @@ if __name__ == "__main__":
                     sample_weights.append(class_weights[tile_class])
                 else:
                     sample_weights.append(1.0)
-            
+
             # Create the sampler
             sampler = WeightedRandomSampler(
                 weights=torch.DoubleTensor(sample_weights),
                 num_samples=len(sample_weights),
-                replacement=True
+                replacement=True,
             )
-            
+
             # Use the sampler in the DataLoader
             train_loader = DataLoader(
                 train_ds,
@@ -131,10 +129,14 @@ if __name__ == "__main__":
                 pin_memory=True,
                 collate_fn=graph_collate_fn,
             )
-            
-            logging.info(f"Created weighted sampler with class weights: {class_weights}")
+
+            logging.info(
+                f"Created weighted sampler with class weights: {class_weights}"
+            )
         else:
-            logging.warning("Composite dataset detected but no class distribution found")
+            logging.warning(
+                "Composite dataset detected but no class distribution found"
+            )
             train_loader = DataLoader(
                 train_ds,
                 batch_size=config.BATCH_SIZE,
@@ -163,8 +165,10 @@ if __name__ == "__main__":
         collate_fn=graph_collate_fn,
     )
 
-    checkpoint_callback = ModelCheckpoint(every_n_epochs=5, save_top_k=-1, dirpath=shared_dir)
-    lr_monitor = LearningRateMonitor(logging_interval='step')
+    checkpoint_callback = ModelCheckpoint(
+        every_n_epochs=5, save_top_k=-1, dirpath=shared_dir
+    )
+    lr_monitor = LearningRateMonitor(logging_interval="step")
 
     # Initialize WandbLogger with the same directory
     wandb_logger = WandbLogger(save_dir=shared_dir)
@@ -184,26 +188,34 @@ if __name__ == "__main__":
         default_root_dir=shared_dir,  # Using the shared directory
         devices=1,
         # profiler=profiler
-        )
+    )
 
     trainer.fit(net, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
     # After training is complete, upload to GCS if specified
     if args.upload_to_gcs and not dev_run:
-        logging.info(f"Training completed. Uploading output directory {shared_dir} to GCS bucket {args.gcs_bucket}")
-        
-        # Use the basename of the directory as the destination prefix 
+        logging.info(
+            f"Training completed. Uploading output directory {shared_dir} to GCS bucket {args.gcs_bucket}"
+        )
+
+        # Use the basename of the directory as the destination prefix
         # to maintain the directory structure in the bucket
-        destination_prefix = os.path.join('sam_road/outputs/', os.path.basename(shared_dir))
+        destination_prefix = os.path.join(
+            "sam_road/outputs/", os.path.basename(shared_dir)
+        )
         print(destination_prefix)
         # Upload the directory to GCS
         success = upload_to_gcs_bucket(
             source_directory=shared_dir,
             bucket_name=args.gcs_bucket,
-            destination_prefix=destination_prefix
+            destination_prefix=destination_prefix,
         )
-        
+
         if success:
-            logging.info(f"Successfully uploaded output directory to gs://{args.gcs_bucket}/{destination_prefix}")
+            logging.info(
+                f"Successfully uploaded output directory to gs://{args.gcs_bucket}/{destination_prefix}"
+            )
         else:
-            logging.error(f"Failed to upload output directory to GCS bucket")
+            logging.error(
+                f"Failed to upload output directory to GCS bucket {args.gcs_bucket}"
+            )
