@@ -12,8 +12,9 @@ import addict
 import json
 import logging
 from utils import load_data_config
+
 # Import DatasetHandler for GCP download functionality
-from extract.extractors.georeferencers.utils.get_datsets import DatasetHandler
+from .create_datasets import DatasetHandler
 
 
 
