@@ -14,7 +14,7 @@ import logging
 from utils import load_data_config
 
 # Import DatasetHandler for GCP download functionality
-from .create_datasets import DatasetHandler
+from .preprocessing.create_datasets import DatasetHandler
 
 
 
