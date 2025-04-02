@@ -1,7 +1,5 @@
 # Extract's fork of "Segment Anything Model for Road Network Graph Extraction"
 
-Link to google creds https://drive.google.com/file/d/1e6AJ6tSdS1dVmAF4KuOcWVLpn5_opASH/view?usp=drive_link
-
 ## Demos
 Predicted road network graph in a large region (2km x 2km).
 ![sam_road_cover](imgs/sam_road_cover.png)
@@ -29,6 +27,10 @@ Pre-commit setup:
 ```bash
 uvx pre-commit install
 ```
+
+
+Create a `google_creds.json` using the [creds stored in google drive](https://drive.google.com/file/d/1e6AJ6tSdS1dVmAF4KuOcWVLpn5_opASH/view?usp=drive_link).
+
 
 ### SAM Preparation
 Download the ViT-B checkpoint from the official SAM directory. Put it under:
