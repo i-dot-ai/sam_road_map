@@ -12,10 +12,10 @@ import torch
 from torch.utils.data import Dataset
 
 import evals.graph_utils as graph_utils
-from utils import load_data_config
 
 # Import DatasetHandler for GCP download functionality
-from ..preprocessing.create_datasets import DatasetHandler
+from preprocessing.create_datasets import DatasetHandler
+from utils import load_data_config
 
 
 def read_rgb_img(path):

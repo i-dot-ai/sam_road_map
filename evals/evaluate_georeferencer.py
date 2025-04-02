@@ -64,11 +64,11 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from dataset import SatMapDataset
 from extract.extractors.georeferencers import RoadMatcherGeoreferencer
 from shapely.geometry import Point
 from tqdm import tqdm
 
+from training.dataset import SatMapDataset
 from utils import create_output_dir_and_save_config, load_config
 
 # Configure logging
