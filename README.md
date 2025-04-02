@@ -1,4 +1,5 @@
-# Fork of "Segment Anything Model for Road Network Graph Extraction"
+# Extract's fork of "Segment Anything Model for Road Network Graph Extraction"
+
 Link to google creds https://drive.google.com/file/d/1e6AJ6tSdS1dVmAF4KuOcWVLpn5_opASH/view?usp=drive_link
 
 ## Demos
