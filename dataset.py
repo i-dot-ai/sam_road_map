@@ -1,3 +1,4 @@
+import random
 import numpy as np
 import torch
 from torch.utils.data import Dataset
@@ -274,9 +275,22 @@ def graph_collate_fn(batch):
 
 
 class SatMapDataset(Dataset):
-    def __init__(self, config, is_train, dev_run=False):
+    def __init__(self, config, is_train, dev_run=False, return_graph=True, return_metadata=False):
+        """Main dataset type for the extract project
+
+        Args:
+            config (_type_): should be loaded from the model config yaml file
+            is_train (bool): if True, the dataset will be used for training, otherwise it will be used for validation or testing
+            dev_run (bool, optional): if True, the dataset will be reduced to 4 tiles for debugging. Defaults to False.
+            return_graph (bool, optional): turning off the graph data will speed up the dataloader
+            return_metadata (bool, optional): Good for tests
+
+        Raises:
+            ValueError: _description_
+        """        
         self.config = config
-        
+        self.return_graph = return_graph
+        self.return_metadata = return_metadata
         assert self.config.DATASET in {'os'}
         
         
@@ -316,6 +330,7 @@ class SatMapDataset(Dataset):
         keypoint_mask_pattern = f'{dataset_dir}/{{}}/keypoints.png'
         road_mask_pattern = f'{dataset_dir}/{{}}/road_mask.png'
         gt_graph_pattern = f'{dataset_dir}/{{}}/graph.json'
+        metadata_pattern = f'{dataset_dir}/{{}}/metadata.json'  # Pattern for metadata files
         coord_transform = None
         
         # Get data split or generate one if it doesn't exist
@@ -337,7 +352,7 @@ class SatMapDataset(Dataset):
         # Stores all imgs in memory.
         self.rgbs, self.keypoint_masks, self.road_masks = [], [], []
         # For graph label generation.
-        self.graph_label_generators = []
+        self.graph_label_generators = [] if self.return_graph else None
 
         ##### FAST DEBUG
         if dev_run:
@@ -347,31 +362,50 @@ class SatMapDataset(Dataset):
         # Keep track of which index corresponds to which tile
         self.idx_to_tile = {}
         processed_tile_count = 0
+        # Dictionary to store metadata for each tile
+        self.tile_metadata = {}
 
         for tile_idx in tile_indices:
             # print(f'loading tile {tile_idx}')
             rgb_path = rgb_pattern.format(tile_idx)
             road_mask_path = road_mask_pattern.format(tile_idx)
             keypoint_mask_path = keypoint_mask_pattern.format(tile_idx)
+            metadata_path = metadata_pattern.format(tile_idx)
             
-    
-            try:
-                with open(gt_graph_pattern.format(tile_idx),'r') as jf:
-                    gt_graph_adj = json.load(jf)
-            except FileNotFoundError:
-                print(f'===== skipped missing tile {tile_idx} =====')
-                continue
-            except json.JSONDecodeError:
-                print(f'===== skipped corrupt graph file for tile {tile_idx} =====')
-                continue
+            # Only load graph data if return_graph is True
+            if self.return_graph:
+                try:
+                    with open(gt_graph_pattern.format(tile_idx),'r') as jf:
+                        gt_graph_adj = json.load(jf)
+                except FileNotFoundError:
+                    print(f'===== skipped missing tile {tile_idx} =====')
+                    continue
+                except json.JSONDecodeError:
+                    print(f'===== skipped corrupt graph file for tile {tile_idx} =====')
+                    continue
                     
             try:
                 self.rgbs.append(read_rgb_img(rgb_path))
                 self.road_masks.append(cv2.imread(road_mask_path, cv2.IMREAD_GRAYSCALE))
                 self.keypoint_masks.append(cv2.imread(keypoint_mask_path, cv2.IMREAD_GRAYSCALE))
-                graph_label_generator = GraphLabelGenerator(config, gt_graph_adj, coord_transform)
-                self.graph_label_generators.append(graph_label_generator)
                 
+                # Only create graph label generator if return_graph is True
+                if self.return_graph:
+                    graph_label_generator = GraphLabelGenerator(config, gt_graph_adj, coord_transform)
+                    self.graph_label_generators.append(graph_label_generator)
+                
+                # Load metadata if it exists
+                if self.return_metadata:
+                    try:
+                        with open(metadata_path, 'r') as mf:
+                            tile_metadata = json.load(mf)
+                            tile_metadata = self.add_offset_center(tile_metadata)
+                            self.tile_metadata[processed_tile_count] = tile_metadata
+                            
+                    except (FileNotFoundError, json.JSONDecodeError):
+                        print(f'===== warning: no valid metadata for tile {tile_idx} =====')
+                        self.tile_metadata[processed_tile_count] = {}
+                    
                 # Store mapping from processed index to tile_idx
                 self.idx_to_tile[processed_tile_count] = tile_idx
                 processed_tile_count += 1
@@ -408,6 +442,64 @@ class SatMapDataset(Dataset):
                 self.eval_patches += get_patch_info_one_img(
                     i, self.IMAGE_SIZE, self.SAMPLE_MARGIN, self.config.PATCH_SIZE, eval_patches_per_edge
                 )
+            
+    def add_offset_center(self,metadata, offset_distance_meters=None, direction_degrees=None):
+        """
+        Add offset center coordinates to a data object's metadata. Used for testing
+        
+        Args:
+            data_obj: The object from the dataloader
+            offset_distance_meters: Distance to offset in meters
+            direction_degrees: Direction in degrees (0=North, 90=East, 180=South, 270=West)
+        
+        Returns:
+            The updated data object with 'offset_center' in its metadata
+        """
+
+        
+        # Extract the original center coordinates from metadata
+        original_center = metadata.get('center', None)
+        
+        if not original_center:
+            raise ValueError("No center coordinates found in metadata")
+        
+        # Extract latitude and longitude
+        lat, lon = original_center['lat'], original_center['lon']
+        
+        
+        if offset_distance_meters is None:
+            offset_distance_meters = max(5,np.random.normal(loc=20,scale=10))
+        if direction_degrees is None:
+            direction_degrees = np.random.uniform(0, 360)
+        
+        # Convert direction to radians
+        direction_radians = math.radians(direction_degrees)
+        
+        # Calculate offsets
+        # For latitude: 1 degree = approximately 111,111 meters
+        # For longitude: 1 degree = approximately 111,111 * cos(latitude) meters
+        lat_offset_meters = offset_distance_meters * math.cos(direction_radians)
+        lon_offset_meters = offset_distance_meters * math.sin(direction_radians)
+        
+        # Convert meters to degrees
+        lat_offset_degrees = lat_offset_meters / 111111 
+        lon_offset_degrees = lon_offset_meters / (111111 * math.cos(math.radians(lat)))
+        
+        # Calculate new coordinates
+        new_lat = lat + lat_offset_degrees
+        new_lon = lon + lon_offset_degrees
+        
+        # Update metadata with new offset center
+        metadata['offset'] = {
+            'lat': new_lat,
+            'lon': new_lon,
+            'lat_offset': lat_offset_degrees,
+            'lon_offset': lon_offset_degrees,
+            'distance': offset_distance_meters,
+            'direction': direction_degrees,
+        }
+        
+        return metadata
         
     def get_tile_class(self, tile_idx):
         """Return the class/source dataset of the given tile.
@@ -491,6 +583,9 @@ class SatMapDataset(Dataset):
         if self.is_composite and tile_idx is not None:
             tile_class = self.get_tile_class(tile_idx)
         
+        # Get metadata for this tile
+        metadata = self.tile_metadata.get(img_idx, {})
+        
         # Crop patch imgs and masks
         rgb_patch = self.rgbs[img_idx][begin_y:end_y, begin_x:end_x, :]
         keypoint_mask_patch = self.keypoint_masks[img_idx][begin_y:end_y, begin_x:end_x]
@@ -505,27 +600,33 @@ class SatMapDataset(Dataset):
             keypoint_mask_patch = np.rot90(keypoint_mask_patch, rot_index, [0, 1]).copy()
             road_mask_patch = np.rot90(road_mask_patch, rot_index, [0, 1]).copy()
         
-        # Sample graph labels from patch
-        patch = ((begin_x, begin_y), (end_x, end_y))
-        # points are img (x, y) inside the patch.
-        graph_points, topo_samples = self.graph_label_generators[img_idx].sample_patch(patch, rot_index)
-        
-        pairs, connected, valid = zip(*topo_samples)
-        
-        
-        # rgb: [H, W, 3] 0-255
-        # masks: [H, W] 0-1
-        return {
+        # Base dictionary with non-graph data
+        result = {
             'rgb': torch.tensor(rgb_patch, dtype=torch.float32),
             'keypoint_mask': torch.round(torch.tensor(keypoint_mask_patch, dtype=torch.float32) / 255.0),
             'road_mask': torch.round(torch.tensor(road_mask_patch, dtype=torch.float32) / 255.0),
-            
-            'graph_points': torch.tensor(graph_points, dtype=torch.float32),
-            'pairs': torch.tensor(pairs, dtype=torch.int32),
-            'connected': torch.tensor(connected, dtype=torch.bool),
-            'valid': torch.tensor(valid, dtype=torch.bool),
             'tile_class': tile_class,
+            'metadata': metadata,
         }
+        
+        # Only include graph-related data if return_graph is True
+        if self.return_graph:
+            # Sample graph labels from patch
+            patch = ((begin_x, begin_y), (end_x, end_y))
+            # points are img (x, y) inside the patch.
+            graph_points, topo_samples = self.graph_label_generators[img_idx].sample_patch(patch, rot_index)
+            
+            pairs, connected, valid = zip(*topo_samples)
+            
+            # Add graph-related data to the result
+            result.update({
+                'graph_points': torch.tensor(graph_points, dtype=torch.float32),
+                'pairs': torch.tensor(pairs, dtype=torch.int32),
+                'connected': torch.tensor(connected, dtype=torch.bool),
+                'valid': torch.tensor(valid, dtype=torch.bool),
+            })
+        
+        return result
 
 
 if __name__ == '__main__':

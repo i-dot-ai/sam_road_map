@@ -5,7 +5,7 @@ DATASET_ID: 'os_composite_bw_color'
 NO_SAM: False
 
 SAM_VERSION: 'vit_b'
-SAM_CKPT_PATH: 'sam/sam_ckpts/sam_vit_b_01ec64.pth'
+SAM_CKPT_PATH: 'output/os_composite_bw_color_new_dataset_09_1142_20250309_114245/epoch=99-step=6000.ckpt'
 PATCH_SIZE: 256
 BATCH_SIZE: 64
 DATA_WORKER_NUM: 8

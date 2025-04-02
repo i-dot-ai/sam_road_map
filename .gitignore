@@ -11,6 +11,8 @@ lightning_logs/
 sam_ckpts/
 output/
 GCP_creds.json
+cache/
+georef_eval_*/
 # Ignore everything in os directory
 os/*
 # But not these files
