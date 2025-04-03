@@ -274,7 +274,7 @@ def graph_collate_fn(batch):
 
 
 class SatMapDataset(Dataset):
-    def __init__(self, config, is_train, dev_run=False, return_graph=True, return_metadata=False):
+    def __init__(self, config, is_train, dev_run=False, return_graph=True, return_metadata=False, download_from_gcs=False):
         """Main dataset type for the extract project
 
         Args:
@@ -301,7 +301,7 @@ class SatMapDataset(Dataset):
         dataset_dir = f'./os/{dataset_id}'
         
         # Initialize DatasetHandler with the datasset directory and enable GCP download
-        dataset_handler = DatasetHandler(dataset_dir, download_from_gcs=False)
+        dataset_handler = DatasetHandler(dataset_dir, download_from_gcs=download_from_gcs)
         self.dataset_handler = dataset_handler  # Store reference to dataset_handler
         data_config = load_data_config(dataset_dir, self.config)
         self.config.DATA_CONFIG = data_config
